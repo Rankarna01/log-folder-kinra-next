@@ -1,26 +1,57 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --kinra-primary: #0B6E6C;
+  --kinra-dark: #075250;
+  --kinra-light: #C8EBE5;
+  --kinra-sky: #D4EEFC;
+  --kinra-amber: #FDE9B4;
+  --kinra-terracotta: #FCE1D4;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #BFD4D2;
+  color: #111827;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* KINRA Sei Mangkei Signature Pattern */
+.bg-kinra-grid {
+  background-color: #0B6E6C;
+  background-image:
+    linear-gradient(45deg, rgba(6, 78, 76, 0.55) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(6, 78, 76, 0.55) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(6, 78, 76, 0.55) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(6, 78, 76, 0.55) 75%);
+  background-size: 64px 64px;
+  background-position: 0 0, 0 32px, 32px -32px, -32px 0;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Clean native date & time inputs across iOS, Chrome, Safari */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: pointer;
+}
+
+input[type="date"],
+input[type="time"] {
+  position: relative;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }

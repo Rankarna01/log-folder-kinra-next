@@ -14,11 +14,13 @@ export default function RegisterPage() {
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    setSuccessMsg('');
 
     if (password !== passwordConfirm) {
       setErrorMsg('Konfirmasi password tidak cocok.');
@@ -32,7 +34,7 @@ export default function RegisterPage() {
       return;
     }
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
@@ -43,8 +45,25 @@ export default function RegisterPage() {
       return;
     }
 
-    router.push('/onboarding');
-    router.refresh();
+    // Email already registered (Supabase returns empty identities for duplicate emails)
+    if (data?.user && data?.user?.identities && data?.user?.identities.length === 0) {
+      setErrorMsg('Email ini sudah terdaftar. Silakan langsung masuk di halaman Login.');
+      setLoading(false);
+      return;
+    }
+
+    // If auto-confirm is enabled in Supabase, session is active immediately
+    if (data?.session) {
+      router.push('/onboarding');
+      router.refresh();
+      return;
+    }
+
+    // If email confirmation is required by Supabase
+    setSuccessMsg(
+      'Pendaftaran berhasil! Tautan verifikasi telah dikirim ke email Anda. Silakan periksa kotak masuk (Inbox atau Spam) email Anda lalu klik tautan tersebut sebelum masuk.'
+    );
+    setLoading(false);
   };
 
   return (
@@ -67,6 +86,18 @@ export default function RegisterPage() {
           {errorMsg && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3.5 py-2.5 rounded-xl font-medium">
               {errorMsg}
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3.5 py-3 rounded-xl font-medium space-y-2">
+              <p>{successMsg}</p>
+              <Link
+                href="/login"
+                className="inline-block font-bold text-[#0B6E6C] hover:underline"
+              >
+                Menuju Halaman Masuk &rarr;
+              </Link>
             </div>
           )}
 

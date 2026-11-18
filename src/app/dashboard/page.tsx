@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { TopBar, FloatingDock } from '@/components/Navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Logbook, Profile } from '@/types/database';
 
@@ -98,15 +97,8 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col pb-24">
-      {/* Top participant status bar */}
-      <TopBar
-        userName={profile?.name || 'Peserta Magang'}
-        userDivision={profile?.division || 'Divisi IT'}
-        onLogout={handleLogout}
-      />
-
-      <div className="px-5 pt-3 space-y-4">
+    <div className="flex-1 flex flex-col space-y-4">
+      <div className="space-y-4">
         {/* Participant Header */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
@@ -287,9 +279,6 @@ export default function DashboardPage() {
           )}
         </section>
       </div>
-
-      {/* Floating Bottom Dock */}
-      <FloatingDock hasTodayLog={!!todayLog} />
     </div>
   );
 }

@@ -1,12 +1,22 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { AppShell } from '@/components/AppShell';
 
 export const metadata: Metadata = {
-  title: 'Timesheet KINRA Sei Mangkei — Logbook Harian Peserta',
+  title: 'Timesheet KINRA Sei Mangkei — Logbook Harian Peserta Magang',
   description: 'Aplikasi pencatatan logbook kegiatan harian peserta magang KINRA Sei Mangkei',
+  manifest: '/manifest.json',
   icons: {
     icon: '/kinra.png',
+    apple: '/kinra.png',
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0B6E6C',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -23,11 +33,11 @@ export default function RootLayout({
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
         />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
-      <body className="min-h-screen text-[#111827] antialiased">
-        <main className="max-w-[440px] mx-auto min-h-screen bg-[#F4F7F6] relative shadow-2xl flex flex-col">
-          {children}
-        </main>
+      <body className="min-h-screen text-[#111827] antialiased bg-[#F0F4F3]">
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

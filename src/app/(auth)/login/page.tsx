@@ -25,7 +25,13 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setErrorMsg(error.message || 'Email atau password salah.');
+      if (error.message.toLowerCase().includes('invalid login credentials')) {
+        setErrorMsg(
+          'Email atau kata sandi salah. Jika baru mendaftar, pastikan Anda telah memverifikasi email konfirmasi dari Supabase di inbox/spam Anda.'
+        );
+      } else {
+        setErrorMsg(error.message || 'Email atau kata sandi salah.');
+      }
       setLoading(false);
       return;
     }

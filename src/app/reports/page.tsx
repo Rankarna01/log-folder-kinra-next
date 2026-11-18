@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { TopBar, FloatingDock } from '@/components/Navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Logbook, Profile } from '@/types/database';
 
@@ -47,12 +46,8 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col pb-24">
-      <div className="print:hidden">
-        <TopBar />
-      </div>
-
-      <div className="px-5 pt-3 space-y-4 print:p-0 print:m-0">
+    <div className="flex-1 flex flex-col space-y-4">
+      <div className="space-y-4 print:p-0 print:m-0">
         {/* Screen Header (Hidden on Print) */}
         <header className="flex items-center justify-between print:hidden">
           <Link
@@ -204,10 +199,6 @@ export default function ReportsPage() {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="print:hidden">
-        <FloatingDock />
       </div>
     </div>
   );

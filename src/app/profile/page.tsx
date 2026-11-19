@@ -1,20 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import type { Profile } from '@/types/database';
+import { DIVISIONS } from '@/components/onboarding/ProfileSetupForm';
+import { useToast } from '@/components/feedback/FeedbackProvider';
+import type { Mentor, Profile, UserRole } from '@/types/database';
+
+const ROLE_META: Record<UserRole, { title: string; chip: string; icon: string }> = {
+  admin: { title: 'Profil Super Admin', chip: 'Super Admin', icon: 'fa-shield-halved' },
+  mentor: { title: 'Profil Mentor Pembimbing', chip: 'Mentor Pembimbing', icon: 'fa-chalkboard-user' },
+  participant: { title: 'Profil Peserta Magang', chip: 'Peserta Magang', icon: 'fa-user-graduate' },
+};
 
 export default function ProfilePage() {
   const router = useRouter();
   const supabase = createClient();
+  const { toast } = useToast();
 
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [mentors, setMentors] = useState<Mentor[]>([]);
   const [name, setName] = useState('');
-  const [division, setDivision] = useState('');
+  const [division, setDivision] = useState<string>(DIVISIONS[0]);
   const [position, setPosition] = useState('');
-  const [mentorName, setMentorName] = useState('');
+  const [mentorId, setMentorId] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
@@ -29,54 +38,71 @@ export default function ProfilePage() {
         return;
       }
 
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
+      const [{ data }, { data: mentorRows }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        supabase.from('mentors').select('*').eq('is_active', true).order('name'),
+      ]);
 
       if (data) {
-        setProfile(data as Profile);
-        setName(data.name || '');
-        setDivision(data.division || 'Divisi Teknologi Informasi');
-        setPosition(data.position || 'Junior Full stack developer');
-        setMentorName(data.mentor_name || 'RIZKY DELIANNGI');
+        const p = data as Profile;
+        setProfile(p);
+        setName(p.name || '');
+        setDivision(p.division || DIVISIONS[0]);
+        setPosition(p.position || '');
+        setMentorId(p.mentor_id || '');
       }
+      setMentors((mentorRows as Mentor[]) || []);
       setFetching(false);
     }
 
     loadProfile();
   }, [router, supabase]);
 
+  const role: UserRole = profile?.role ?? 'participant';
+  const meta = ROLE_META[role];
+  const isParticipant = role === 'participant';
+
+  // Nama mentor ganda disembunyikan, sama seperti di form pendaftaran.
+  const uniqueMentors = useMemo(() => {
+    const seen = new Map<string, Mentor>();
+    mentors.forEach((m) => {
+      const key = m.name.trim().toLowerCase();
+      if (!seen.has(key)) seen.set(key, m);
+    });
+    return [...seen.values()];
+  }, [mentors]);
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!profile) return;
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        name,
-        division,
-        position,
-        mentor_name: mentorName,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', user.id);
-
-    if (error) {
-      alert('Gagal update: ' + error.message);
+    const chosen = uniqueMentors.find((m) => m.id === mentorId);
+    if (isParticipant && !chosen) {
+      toast.warning('Pilih mentor pembimbing dari daftar.');
       setLoading(false);
       return;
     }
 
-    alert('Profil berhasil diperbarui!');
+    const payload: Record<string, unknown> = {
+      name: name.trim(),
+      division,
+      position: position.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (isParticipant && chosen) {
+      payload.mentor_id = chosen.id;
+      payload.mentor_name = chosen.name;
+    }
+
+    const { error } = await supabase.from('profiles').update(payload).eq('id', profile.id);
     setLoading(false);
+
+    if (error) {
+      toast.error(error.message, 'Profil gagal diperbarui');
+      return;
+    }
+    toast.success('Perubahan profil Anda sudah disimpan.');
     router.refresh();
   };
 
@@ -91,91 +117,68 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col space-y-4">
-      <div className="space-y-4">
-        <header className="flex items-center justify-between">
-          <Link
-            href="/dashboard"
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#18181B] shadow-2xs hover:scale-105 transition"
-          >
-            <i className="fa-solid fa-chevron-left text-sm"></i>
-          </Link>
-          <h1 className="text-[17px] font-semibold text-[#111827]">Profil Peserta Magang</h1>
-          <div className="w-10"></div>
-        </header>
+    <div className="kc-page" style={{ maxWidth: 720, margin: '0 auto' }}>
+      <header className="kc-head">
+        <p className="kc-eyebrow">Akun</p>
+        <h1>{meta.title}</h1>
+        <p>Perbarui data diri Anda. Email login tidak bisa diubah dari halaman ini.</p>
+      </header>
 
-        {/* Profile Card Header */}
-        <section className="bg-kinra-grid rounded-[28px] p-6 text-white shadow-xs text-center space-y-3">
-          <div className="w-16 h-16 rounded-full bg-white text-[#0B6E6C] mx-auto flex items-center justify-center text-2xl shadow-sm font-bold">
-            <i className="fa-solid fa-graduation-cap"></i>
+      <section className="kc-card" style={{ alignItems: 'center', textAlign: 'center', gap: 10 }}>
+        <div className="kc-avatar" style={{ width: 64, height: 64, borderRadius: 18, fontSize: 24 }} aria-hidden="true">
+          <i className={`fa-solid ${meta.icon}`}></i>
+        </div>
+        <div>
+          <h2 className="kc-section-title" style={{ fontSize: 18 }}>{profile?.name || '–'}</h2>
+          <p className="kc-muted kc-small" style={{ margin: '2px 0 0' }}>{profile?.email}</p>
+        </div>
+        <span className="kc-chip kc-chip-na">
+          <i className={`fa-solid ${meta.icon}`} aria-hidden="true"></i>
+          {meta.chip}
+        </span>
+      </section>
+
+      <form onSubmit={handleUpdate} className="kc-card kc-form">
+        <div className="kc-field">
+          <label htmlFor="pf-name">Nama lengkap</label>
+          <input id="pf-name" type="text" required value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+
+        <div className="kc-field">
+          <label htmlFor="pf-div">Divisi penempatan</label>
+          <select id="pf-div" value={division} onChange={(e) => setDivision(e.target.value)}>
+            {DIVISIONS.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="kc-field">
+          <label htmlFor="pf-pos">{isParticipant ? 'Bagian / posisi penugasan' : 'Jabatan'}</label>
+          <input id="pf-pos" type="text" value={position} onChange={(e) => setPosition(e.target.value)} placeholder={isParticipant ? 'Contoh: Junior Full stack developer' : 'Contoh: Kepala Unit TI'} />
+        </div>
+
+        {isParticipant && (
+          <div className="kc-field">
+            <label htmlFor="pf-mentor">Mentor pembimbing <span className="kc-req">*</span></label>
+            <select id="pf-mentor" value={mentorId} onChange={(e) => setMentorId(e.target.value)} required>
+              <option value="" disabled>{uniqueMentors.length ? 'Pilih mentor Anda' : 'Belum ada mentor terdaftar'}</option>
+              {uniqueMentors.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
           </div>
-          <div>
-            <h2 className="text-lg font-bold">{profile?.name || 'Muhammad Randy Karna'}</h2>
-            <p className="text-xs text-emerald-100 mt-0.5">{profile?.email}</p>
-          </div>
-        </section>
+        )}
 
-        {/* Update Form */}
-        <form onSubmit={handleUpdate} className="bg-white rounded-[28px] p-5 shadow-2xs space-y-3.5">
-          <div>
-            <label className="block text-xs font-semibold text-[#111827]">Nama Lengkap</label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-[#111827]">Divisi Penempatan</label>
-            <input
-              type="text"
-              required
-              value={division}
-              onChange={(e) => setDivision(e.target.value)}
-              className="mt-1 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-[#111827]">Bagian / Posisi</label>
-            <input
-              type="text"
-              value={position}
-              onChange={(e) => setPosition(e.target.value)}
-              className="mt-1 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-[#111827]">Nama Mentor Pembimbing</label>
-            <input
-              type="text"
-              value={mentorName}
-              onChange={(e) => setMentorName(e.target.value)}
-              className="mt-1 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#0B6E6C] hover:bg-[#085856] text-white text-xs font-bold py-3.5 rounded-full shadow-md transition disabled:opacity-50 cursor-pointer pt-2"
-          >
-            {loading ? 'Menyimpan...' : 'Simpan Pembaruan Profil'}
-          </button>
-        </form>
-
-        <button
-          onClick={handleLogout}
-          className="w-full bg-white border border-zinc-200 text-rose-600 text-xs font-bold py-3 rounded-full shadow-2xs hover:bg-rose-50 transition cursor-pointer flex items-center justify-center gap-1.5"
-        >
-          <i className="fa-solid fa-arrow-right-from-bracket"></i>
-          <span>Keluar dari Akun</span>
+        <button type="submit" disabled={loading} className="kc-btn kc-btn-primary" style={{ justifyContent: 'center', height: 46 }}>
+          {loading ? 'Menyimpan…' : 'Simpan perubahan'}
         </button>
-      </div>
+      </form>
+
+      <button type="button" onClick={handleLogout} className="kc-btn" style={{ justifyContent: 'center', color: 'var(--txt-bad)' }}>
+        <i className="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
+        Keluar dari akun
+      </button>
     </div>
   );
 }

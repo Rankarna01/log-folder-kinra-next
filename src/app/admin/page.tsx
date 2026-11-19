@@ -57,7 +57,7 @@ export default function AdminDashboardPage() {
         .order('created_at', { ascending: false });
 
       if (allProfiles) {
-        setInterns(allProfiles.filter((p) => p.role !== 'admin'));
+        setInterns(allProfiles.filter((p) => p.role === 'participant'));
       }
 
       // Fetch mentors
@@ -66,63 +66,7 @@ export default function AdminDashboardPage() {
         .select('*')
         .order('name');
 
-      if (allMentors && allMentors.length > 0) {
-        setMentors(allMentors);
-      } else {
-        // Fallback default mentors
-        setMentors([
-          {
-            id: 'm-1',
-            name: 'RIZKY DELIANNGI',
-            division: 'Divisi Teknologi Informasi',
-            position: 'Kepala Unit TI & Sistem Digital',
-            email: 'rizky.delianngi@kinra.co.id',
-            phone: '08126001234',
-            is_active: true,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: 'm-2',
-            name: 'Ir. HENDRA SAPUTRA',
-            division: 'Divisi Operasional & Kawasan',
-            position: 'Manajer Operasional Kawasan KEK',
-            email: 'hendra.s@kinra.co.id',
-            phone: '08126005678',
-            is_active: true,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: 'm-3',
-            name: 'SITI RAHMAWATI, S.E., M.Ak',
-            division: 'Divisi Keuangan & Akuntansi',
-            position: 'Supervisor Keuangan & Pajak',
-            email: 'siti.rahmawati@kinra.co.id',
-            phone: '08137009876',
-            is_active: true,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: 'm-4',
-            name: 'DEDI IRAWAN, S.H.',
-            division: 'Divisi Umum, SDM & Hukum',
-            position: 'Staf Senior SDM & Legal',
-            email: 'dedi.irawan@kinra.co.id',
-            phone: '08216503412',
-            is_active: true,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: 'm-5',
-            name: 'Ir. AGUS WIJAYA',
-            division: 'Divisi Teknik & Pemeliharaan',
-            position: 'Kepala Divisi Pemeliharaan Aset',
-            email: 'agus.wijaya@kinra.co.id',
-            phone: '08116307890',
-            is_active: true,
-            created_at: new Date().toISOString(),
-          },
-        ]);
-      }
+      setMentors((allMentors as Mentor[]) || []);
 
       // Fetch all logbooks
       const { data: allLogbooks } = await supabase

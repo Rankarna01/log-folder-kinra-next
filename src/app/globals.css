@@ -621,3 +621,11 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
   .kc-lb-name { display: none; }
   .kc-lightbox-stage { padding-bottom: 72px; }
 }
+
+/* Checkbox dan filter kecil (halaman Data Mentor) */
+.kc-check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+.kc-check input { width: 18px; height: 18px; accent-color: var(--brand); }
+.kc-input-inline {
+  height: 36px; padding: 0 10px; border-radius: 10px; min-width: 180px;
+  border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 13.5px;
+}

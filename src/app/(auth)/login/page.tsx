@@ -4,6 +4,22 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { homeForRole, roleFromEmail } from '@/lib/auth/roles';
+import { AuthShell, AuthField } from '@/components/AuthShell';
+
+function translateError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes('invalid login credentials')) {
+    return 'Email atau kata sandi salah. Periksa kembali, atau daftar bila belum punya akun.';
+  }
+  if (m.includes('email not confirmed')) {
+    return 'Email belum diverifikasi. Buka tautan konfirmasi di inbox atau folder spam Anda.';
+  }
+  if (m.includes('failed to fetch') || m.includes('network')) {
+    return 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+  }
+  return message || 'Gagal masuk. Silakan coba lagi.';
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,98 +35,79 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg('');
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
       password,
     });
 
-    if (error) {
-      setErrorMsg(error.message || 'Email atau password salah.');
+    if (error || !data.user) {
+      setErrorMsg(translateError(error?.message ?? ''));
       setLoading(false);
       return;
     }
 
-    router.push('/dashboard');
+    // Arahkan sesuai role: admin -> /admin, mentor -> /mentor, peserta -> /dashboard
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', data.user.id)
+      .maybeSingle();
+
+    const role = prof?.role ?? roleFromEmail(data.user.email);
+    router.replace(homeForRole(role));
     router.refresh();
   };
 
   return (
-    <div className="flex-1 px-5 pt-8 pb-10 flex flex-col justify-between">
-      <div className="space-y-6">
-        {/* Brand Card */}
-        <div className="bg-kinra-grid rounded-[28px] p-6 text-white shadow-md text-center space-y-3">
-          <div className="w-16 h-16 rounded-full bg-white mx-auto flex items-center justify-center p-2 shadow-sm">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/kinra.png" alt="KINRA Sei Mangkei" className="h-9 w-auto object-contain" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold tracking-tight">Timesheet KINRA</h1>
-            <p className="text-xs text-emerald-100 font-medium mt-1">
-              Pencatatan Logbook Kegiatan Harian Peserta Magang
-            </p>
-          </div>
+    <AuthShell
+      brandEyebrow="Timesheet KINRA"
+      brandTitle="Logbook harian peserta magang."
+      brandText="Catat kegiatan, ajukan ke mentor, dan pantau persetujuan dalam satu tempat."
+    >
+      <p className="eyebrow auth-eyebrow">Masuk</p>
+      <h1 className="auth-title">Masuk ke akun Anda</h1>
+      <p className="auth-lead">
+        Peserta magang, mentor, dan admin masuk lewat halaman yang sama. Anda akan diarahkan sesuai peran.
+      </p>
+
+      {errorMsg && (
+        <div className="auth-alert auth-alert-error" role="alert">
+          <i className="fa-solid fa-circle-xmark" aria-hidden="true"></i>
+          <span>{errorMsg}</span>
         </div>
+      )}
 
-        {/* Form Card */}
-        <div className="bg-white rounded-[28px] p-6 shadow-sm space-y-4">
-          <div className="border-b border-zinc-100 pb-3">
-            <h2 className="text-base font-bold text-[#111827]">Masuk ke Akun</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Gunakan email & kata sandi yang telah kamu daftarkan
-            </p>
-          </div>
+      <form onSubmit={handleLogin} className="auth-form">
+        <AuthField
+          id="email"
+          label="Email"
+          type="email"
+          icon="fa-envelope"
+          value={email}
+          onChange={setEmail}
+          placeholder="nama@email.com"
+          autoComplete="email"
+        />
+        <AuthField
+          id="password"
+          label="Kata sandi"
+          type="password"
+          icon="fa-lock"
+          value={password}
+          onChange={setPassword}
+          placeholder="Masukkan kata sandi"
+          autoComplete="current-password"
+        />
 
-          {errorMsg && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3.5 py-2.5 rounded-xl font-medium">
-              {errorMsg}
-            </div>
-          )}
+        <button type="submit" disabled={loading} className="btn-masuk">
+          {loading ? 'Memproses...' : 'Masuk'}
+        </button>
+      </form>
 
-          <form onSubmit={handleLogin} className="space-y-3.5">
-            <div>
-              <label className="block text-xs font-semibold text-[#111827]">Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@email.com"
-                className="mt-1 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#111827]">Kata Sandi</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimal 6 karakter"
-                className="mt-1 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#0B6E6C] hover:bg-[#085856] text-white text-xs font-bold py-3.5 rounded-full shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <i className="fa-solid fa-right-to-bracket"></i>
-              <span>{loading ? 'Memproses...' : 'Masuk Sekarang'}</span>
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <div className="text-center pt-6">
-        <p className="text-xs text-zinc-600">
-          Belum memiliki akun?{' '}
-          <Link href="/register" className="font-bold text-[#0B6E6C] hover:underline">
-            Daftar Akun Baru
-          </Link>
-        </p>
-      </div>
-    </div>
+      <p className="auth-switch">
+        Belum punya akun? <Link href="/register">Daftar sebagai peserta</Link>
+      </p>
+      <p className="auth-foot">PT Kawasan Industri Nusantara · KEK Sei Mangkei</p>
+    </AuthShell>
   );
 }

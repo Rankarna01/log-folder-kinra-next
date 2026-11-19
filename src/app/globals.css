@@ -629,3 +629,13 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
   height: 36px; padding: 0 10px; border-radius: 10px; min-width: 180px;
   border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 13.5px;
 }
+
+/* Akun login mentor (Data Mentor) */
+.kc-account-box { padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--line-2); background: var(--surface-2); }
+.kc-input-row { display: flex; gap: 8px; }
+.kc-input-row input { flex: 1; min-width: 0; height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-family: var(--font-mono), ui-monospace, monospace; font-size: 14px; }
+.kc-input-row input:focus { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 4px rgba(0, 129, 135, 0.18); }
+.kc-cred { display: grid; gap: 10px; padding: 14px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--line-2); }
+.kc-cred span { display: block; font-family: var(--font-mono), ui-monospace, monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+.kc-cred b { display: block; margin-top: 3px; font-size: 15px; color: var(--ink); overflow-wrap: anywhere; }
+.kc-mono { font-family: var(--font-mono), ui-monospace, monospace; }

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { DIVISIONS } from '@/components/onboarding/ProfileSetupForm';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import type { Mentor, Profile, UserRole } from '@/types/database';
+import { MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
 
 const ROLE_META: Record<UserRole, { title: string; chip: string; icon: string }> = {
   admin: { title: 'Profil Super Admin', chip: 'Super Admin', icon: 'fa-shield-halved' },
@@ -26,6 +27,9 @@ export default function ProfilePage() {
   const [mentorId, setMentorId] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -106,6 +110,28 @@ export default function ProfilePage() {
     router.refresh();
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwNew.length < MIN_PASSWORD_LENGTH) {
+      toast.warning(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      toast.warning('Konfirmasi kata sandi tidak sama.');
+      return;
+    }
+    setPwSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: pwNew });
+    setPwSaving(false);
+    if (error) {
+      toast.error(error.message, 'Kata sandi gagal diubah');
+      return;
+    }
+    setPwNew('');
+    setPwConfirm('');
+    toast.success('Kata sandi Anda sudah diperbarui.');
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
@@ -172,6 +198,25 @@ export default function ProfilePage() {
 
         <button type="submit" disabled={loading} className="kc-btn kc-btn-primary" style={{ justifyContent: 'center', height: 46 }}>
           {loading ? 'Menyimpan…' : 'Simpan perubahan'}
+        </button>
+      </form>
+
+      <form onSubmit={handleChangePassword} className="kc-card kc-form">
+        <div>
+          <h2 className="kc-section-title">Ubah kata sandi</h2>
+          <p className="kc-muted kc-small" style={{ margin: '2px 0 0' }}>Minimal {MIN_PASSWORD_LENGTH} karakter. Gunakan kombinasi huruf dan angka.</p>
+        </div>
+        <div className="kc-field">
+          <label htmlFor="pw-new">Kata sandi baru</label>
+          <input id="pw-new" type="password" required minLength={MIN_PASSWORD_LENGTH} value={pwNew} onChange={(e) => setPwNew(e.target.value)} autoComplete="new-password" />
+        </div>
+        <div className="kc-field">
+          <label htmlFor="pw-confirm">Ulangi kata sandi baru</label>
+          <input id="pw-confirm" type="password" required minLength={MIN_PASSWORD_LENGTH} value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} autoComplete="new-password" />
+        </div>
+        <button type="submit" disabled={pwSaving} className="kc-btn" style={{ justifyContent: 'center', height: 46 }}>
+          <i className="fa-solid fa-key" aria-hidden="true"></i>
+          {pwSaving ? 'Menyimpan…' : 'Ubah kata sandi'}
         </button>
       </form>
 

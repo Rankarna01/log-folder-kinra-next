@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { DIVISIONS } from '@/components/onboarding/ProfileSetupForm';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import type { Mentor } from '@/types/database';
+import { generatePassword, MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
 
 type Draft = {
   id?: string;
@@ -15,6 +16,8 @@ type Draft = {
   email: string;
   phone: string;
   is_active: boolean;
+  account: boolean;
+  password: string;
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -24,7 +27,11 @@ const EMPTY_DRAFT: Draft = {
   email: '',
   phone: '',
   is_active: true,
+  account: true,
+  password: '',
 };
+
+type Issued = { email: string; password: string; created: boolean; name: string };
 
 const norm = (s?: string | null) => (s || '').trim().toLowerCase();
 
@@ -41,6 +48,10 @@ export default function AdminMentorsPage() {
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [resetFor, setResetFor] = useState<Mentor | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [issued, setIssued] = useState<Issued | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -98,7 +109,7 @@ export default function AdminMentorsPage() {
     [mentors, pesertaByMentor, dupNames]
   );
 
-  const openNew = () => setDraft({ ...EMPTY_DRAFT });
+  const openNew = () => setDraft({ ...EMPTY_DRAFT, password: generatePassword() });
   const openEdit = (m: Mentor) =>
     setDraft({
       id: m.id,
@@ -108,7 +119,20 @@ export default function AdminMentorsPage() {
       email: m.email || '',
       phone: m.phone || '',
       is_active: m.is_active,
+      account: false,
+      password: generatePassword(),
     });
+
+  const callAccountApi = async (mentorId: string, password: string) => {
+    const res = await fetch('/api/admin/mentor-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mentorId, password }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; created?: boolean; email?: string };
+    if (!res.ok) throw new Error(json.error || 'Akun mentor gagal disiapkan.');
+    return json;
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,18 +148,80 @@ export default function AdminMentorsPage() {
       is_active: draft.is_active,
     };
 
-    const { error } = draft.id
-      ? await supabase.from('mentors').update(payload).eq('id', draft.id)
-      : await supabase.from('mentors').insert(payload);
+    let mentorId = draft.id;
+    if (draft.id) {
+      const { error } = await supabase.from('mentors').update(payload).eq('id', draft.id);
+      if (error) {
+        setSaving(false);
+        toast.error(error.message, 'Gagal menyimpan mentor');
+        return;
+      }
+    } else {
+      const { data, error } = await supabase.from('mentors').insert(payload).select('id').single();
+      if (error || !data) {
+        setSaving(false);
+        toast.error(error?.message ?? 'Mentor gagal ditambahkan', 'Gagal menyimpan mentor');
+        return;
+      }
+      mentorId = data.id;
+    }
+
+    if (draft.account) {
+      if (!payload.email) {
+        setSaving(false);
+        toast.warning('Mentor tersimpan, tetapi akun login belum dibuat karena email kosong.', 'Akun belum dibuat');
+        setDraft(null);
+        setReloadKey((k) => k + 1);
+        return;
+      }
+      if (draft.password.length < MIN_PASSWORD_LENGTH) {
+        setSaving(false);
+        toast.warning(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
+        return;
+      }
+      try {
+        const res = await callAccountApi(mentorId!, draft.password);
+        setIssued({ email: res.email!, password: draft.password, created: !!res.created, name: payload.name });
+      } catch (err) {
+        toast.error((err as Error).message, 'Akun login gagal dibuat');
+      }
+    } else {
+      toast.success(draft.id ? `Data ${payload.name} diperbarui.` : `${payload.name} ditambahkan sebagai mentor.`);
+    }
 
     setSaving(false);
-    if (error) {
-      toast.error(error.message, 'Gagal menyimpan mentor');
-      return;
-    }
-    toast.success(draft.id ? `Data ${payload.name} diperbarui.` : `${payload.name} ditambahkan sebagai mentor.`);
     setDraft(null);
     setReloadKey((k) => k + 1);
+  };
+
+  const submitReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetFor) return;
+    if (resetPassword.length < MIN_PASSWORD_LENGTH) {
+      toast.warning(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await callAccountApi(resetFor.id, resetPassword);
+      setIssued({ email: res.email!, password: resetPassword, created: !!res.created, name: resetFor.name });
+      setResetFor(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      toast.error((err as Error).message, 'Reset kata sandi gagal');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyPassword = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.warning('Salin manual dari kolom kata sandi.');
+    }
   };
 
   const toggleActive = async (m: Mentor) => {
@@ -285,6 +371,18 @@ export default function AdminMentorsPage() {
                   <button type="button" className="kc-btn" onClick={() => openEdit(m)}>
                     <i className="fa-solid fa-pen" aria-hidden="true"></i> Ubah
                   </button>
+                  <button
+                    type="button"
+                    className="kc-btn"
+                    disabled={!m.email}
+                    title={m.email ? 'Atur ulang kata sandi login' : 'Isi email mentor dulu'}
+                    onClick={() => {
+                      setResetFor(m);
+                      setResetPassword(generatePassword());
+                    }}
+                  >
+                    <i className="fa-solid fa-key" aria-hidden="true"></i> Sandi
+                  </button>
                   <button type="button" className="kc-btn" onClick={() => toggleActive(m)}>
                     <i className={`fa-solid ${m.is_active ? 'fa-pause' : 'fa-play'}`} aria-hidden="true"></i>
                     {m.is_active ? 'Nonaktifkan' : 'Aktifkan'}
@@ -336,6 +434,27 @@ export default function AdminMentorsPage() {
                 <span>Aktif, tampil di pilihan mentor</span>
               </label>
 
+              <div className="kc-account-box">
+                <label className="kc-check">
+                  <input type="checkbox" checked={draft.account} onChange={(e) => setDraft({ ...draft, account: e.target.checked })} />
+                  <span>{draft.id ? 'Perbarui kata sandi login' : 'Buat akun login untuk mentor ini'}</span>
+                </label>
+                {draft.account && (
+                  <div className="kc-field" style={{ marginTop: 12 }}>
+                    <label htmlFor="m-pass">Kata sandi</label>
+                    <div className="kc-input-row">
+                      <input id="m-pass" type="text" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} autoComplete="off" spellCheck={false} />
+                      <button type="button" className="kc-btn" onClick={() => setDraft({ ...draft, password: generatePassword() })}>
+                        <i className="fa-solid fa-rotate" aria-hidden="true"></i> Generate
+                      </button>
+                    </div>
+                    <p className="kc-help">
+                      Username login memakai email mentor{draft.email ? `: ${draft.email}` : ''}. Mentor bisa mengganti kata sandi sendiri dari halaman Profil.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
                 <button type="button" className="kc-btn" onClick={() => setDraft(null)}>Batal</button>
                 <button type="submit" className="kc-btn kc-btn-primary" disabled={saving}>
@@ -343,6 +462,60 @@ export default function AdminMentorsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {resetFor && (
+        <div className="kc-modal-backdrop" role="presentation" onClick={(e) => e.target === e.currentTarget && setResetFor(null)}>
+          <div className="kc-modal" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+            <p className="kc-eyebrow">Atur ulang kata sandi</p>
+            <h2 id="reset-title">{resetFor.name}</h2>
+            <p>Kata sandi baru akan menggantikan yang lama. Mentor perlu diberi tahu kata sandi barunya.</p>
+            <form onSubmit={submitReset} className="kc-form">
+              <div className="kc-field">
+                <label htmlFor="r-pass">Kata sandi baru</label>
+                <div className="kc-input-row">
+                  <input id="r-pass" type="text" required value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} autoComplete="off" spellCheck={false} />
+                  <button type="button" className="kc-btn" onClick={() => setResetPassword(generatePassword())}>
+                    <i className="fa-solid fa-rotate" aria-hidden="true"></i> Generate
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" className="kc-btn" onClick={() => setResetFor(null)}>Batal</button>
+                <button type="submit" className="kc-btn kc-btn-primary" disabled={saving}>
+                  {saving ? 'Menyimpan…' : 'Simpan kata sandi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {issued && (
+        <div className="kc-modal-backdrop" role="presentation">
+          <div className="kc-modal" role="dialog" aria-modal="true" aria-labelledby="issued-title">
+            <p className="kc-eyebrow">{issued.created ? 'Akun dibuat' : 'Kata sandi diperbarui'}</p>
+            <h2 id="issued-title">{issued.name}</h2>
+            <p>Berikan kredensial ini kepada mentor. Kata sandi hanya ditampilkan sekali dan tidak disimpan di sistem.</p>
+            <div className="kc-cred">
+              <div>
+                <span>Username (email)</span>
+                <b>{issued.email}</b>
+              </div>
+              <div>
+                <span>Kata sandi</span>
+                <b className="kc-mono">{issued.password}</b>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button type="button" className="kc-btn" onClick={() => copyPassword(`Email: ${issued.email}\nKata sandi: ${issued.password}`)}>
+                <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'}`} aria-hidden="true"></i>
+                {copied ? 'Tersalin' : 'Salin'}
+              </button>
+              <button type="button" className="kc-btn kc-btn-primary" onClick={() => setIssued(null)}>Sudah saya catat</button>
+            </div>
           </div>
         </div>
       )}

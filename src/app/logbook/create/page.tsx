@@ -4,11 +4,15 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { uploadAttachments } from '@/lib/attachments';
+import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
+import { useToast } from '@/components/feedback/FeedbackProvider';
 import type { Logbook } from '@/types/database';
 
 export default function CreateLogbookPage() {
   const router = useRouter();
   const supabase = createClient();
+  const { toast } = useToast();
 
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('08:30');
@@ -18,15 +22,17 @@ export default function CreateLogbookPage() {
   const [description, setDescription] = useState('');
   const [output, setOutput] = useState('');
   const [obstacles, setObstacles] = useState('');
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
 
-  const [existingTodayLog, setExistingTodayLog] = useState<Logbook | null>(null);
+  const [existingLog, setExistingLog] = useState<Logbook | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  // Check 1 Day = 1 Logbook
+  // Satu hari, satu logbook
   useEffect(() => {
+    let active = true;
     async function checkExisting() {
+      setInitialLoading(true);
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -43,15 +49,15 @@ export default function CreateLogbookPage() {
         .eq('date', date)
         .maybeSingle();
 
-      if (data) {
-        setExistingTodayLog(data as Logbook);
-      } else {
-        setExistingTodayLog(null);
-      }
+      if (!active) return;
+      setExistingLog((data as Logbook) ?? null);
       setInitialLoading(false);
     }
 
     checkExisting();
+    return () => {
+      active = false;
+    };
   }, [date, router, supabase]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,7 +73,6 @@ export default function CreateLogbookPage() {
       return;
     }
 
-    // 1. Insert Logbook
     const { data: newLog, error: logError } = await supabase
       .from('logbooks')
       .insert({
@@ -81,40 +86,28 @@ export default function CreateLogbookPage() {
         final_description: description,
         output: output || null,
         obstacles: obstacles || null,
-        status: 'approved',
+        status: 'submitted',
       })
       .select()
       .single();
 
-    if (logError) {
-      alert('Gagal menyimpan: ' + logError.message);
+    if (logError || !newLog) {
+      toast.error(logError?.message || 'Logbook belum bisa disimpan. Coba lagi.', 'Gagal menyimpan');
       setLoading(false);
       return;
     }
 
-    // 2. Upload Photo if selected
-    if (photoFile && newLog) {
-      const fileExt = photoFile.name.split('.').pop();
-      const filePath = `${user.id}/${date}/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('logbook-photos')
-        .upload(filePath, photoFile);
-
-      if (!uploadError) {
-        const { data: publicUrlData } = supabase.storage
-          .from('logbook-photos')
-          .getPublicUrl(filePath);
-
-        await supabase.from('attachments').insert({
-          logbook_id: newLog.id,
-          file_url: publicUrlData.publicUrl,
-          file_path: filePath,
-          caption: title,
-        });
+    if (files.length > 0) {
+      const { ok, failed } = await uploadAttachments(supabase, user.id, newLog.id, files, title);
+      if (failed.length > 0) {
+        toast.warning(
+          `${ok} bukti tersimpan. ${failed.length} berkas gagal diunggah: ${failed.join(', ')}.`,
+          'Sebagian bukti gagal'
+        );
       }
     }
 
+    toast.success('Logbook hari ini sudah dikirim ke mentor untuk ditinjau.', 'Logbook tersimpan');
     router.push('/dashboard');
     router.refresh();
   };
@@ -129,22 +122,21 @@ export default function CreateLogbookPage() {
 
   return (
     <div className="flex-1 px-5 pt-4 pb-8 space-y-4">
-      {/* Header */}
       <header className="flex items-center justify-between">
         <Link
           href="/dashboard"
           className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#18181B] shadow-2xs hover:scale-105 transition"
+          aria-label="Kembali"
         >
           <i className="fa-solid fa-chevron-left text-sm"></i>
         </Link>
         <h1 className="text-[17px] font-semibold text-[#111827]">
-          {existingTodayLog ? 'Logbook Hari Ini' : 'Tambah Logbook Harian'}
+          {existingLog ? 'Logbook Hari Ini' : 'Tambah Logbook Harian'}
         </h1>
         <div className="w-10"></div>
       </header>
 
-      {existingTodayLog ? (
-        /* Bento Grid View when Today's Logbook Already Exists */
+      {existingLog ? (
         <div className="space-y-4">
           <section className="bg-kinra-grid rounded-[28px] p-5 text-white shadow-xs space-y-3">
             <div className="flex items-center justify-between">
@@ -153,62 +145,47 @@ export default function CreateLogbookPage() {
                 <span>Sudah Tercatat Hari Ini</span>
               </span>
               <span className="inline-flex items-center gap-1.5 bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                <i
-                  className={
-                    existingTodayLog.work_location === 'lapangan'
-                      ? 'fa-solid fa-person-digging'
-                      : 'fa-solid fa-building'
-                  }
-                ></i>
-                <span>{existingTodayLog.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'}</span>
+                <i className={existingLog.work_location === 'lapangan' ? 'fa-solid fa-person-digging' : 'fa-solid fa-building'}></i>
+                <span>{existingLog.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'}</span>
               </span>
             </div>
 
-            <h2 className="text-[18px] font-bold text-white leading-snug pt-1">
-              {existingTodayLog.title}
-            </h2>
+            <h2 className="text-[18px] font-bold text-white leading-snug pt-1">{existingLog.title}</h2>
             <p className="text-xs text-emerald-100">
               Pencatatan dibatasi 1 logbook per hari. Kamu tetap dapat mengubah isi catatan hari ini melalui tombol Edit di bawah.
             </p>
           </section>
 
-          {/* Bento Grid Cards */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white rounded-[24px] p-4 shadow-2xs flex flex-col justify-between">
               <span className="text-[11px] font-semibold text-zinc-400">Tanggal Kegiatan</span>
-              <p className="text-sm font-bold text-[#111827] mt-2">{existingTodayLog.date}</p>
+              <p className="text-sm font-bold text-[#111827] mt-2">{existingLog.date}</p>
             </div>
 
             <div className="bg-white rounded-[24px] p-4 shadow-2xs flex flex-col justify-between">
               <span className="text-[11px] font-semibold text-zinc-400">Jam Kegiatan</span>
               <p className="text-sm font-bold text-[#111827] mt-2">
-                {existingTodayLog.start_time.slice(0, 5)} - {existingTodayLog.end_time.slice(0, 5)}
+                {existingLog.start_time.slice(0, 5)} - {existingLog.end_time.slice(0, 5)}
               </p>
             </div>
           </div>
 
           <div className="bg-white rounded-[26px] p-5 space-y-3 shadow-2xs">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                Uraian Kegiatan
-              </p>
-              <p className="text-xs text-[#111827] leading-relaxed mt-1">
-                {existingTodayLog.final_description}
-              </p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Uraian Kegiatan</p>
+              <p className="text-xs text-[#111827] leading-relaxed mt-1">{existingLog.final_description}</p>
             </div>
 
-            {existingTodayLog.output && (
+            {existingLog.output && (
               <div className="pt-2.5 border-t border-zinc-100">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  Hasil / Output
-                </p>
-                <p className="text-xs font-semibold text-[#0B6E6C] mt-1">{existingTodayLog.output}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Hasil / Output</p>
+                <p className="text-xs font-semibold text-[#0B6E6C] mt-1">{existingLog.output}</p>
               </div>
             )}
           </div>
 
           <Link
-            href={`/logbook/${existingTodayLog.id}/edit`}
+            href={`/logbook/${existingLog.id}/edit`}
             className="w-full bg-[#0B6E6C] hover:bg-[#085856] text-white text-xs font-bold py-3.5 rounded-full shadow-md flex items-center justify-center gap-2 transition"
           >
             <i className="fa-solid fa-pen-to-square"></i>
@@ -216,9 +193,7 @@ export default function CreateLogbookPage() {
           </Link>
         </div>
       ) : (
-        /* Create Form */
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Bento 2-Column Date & Time */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white rounded-[24px] p-4 shadow-2xs">
               <label htmlFor="input-date" className="block text-[11px] font-semibold text-zinc-400">
@@ -255,16 +230,15 @@ export default function CreateLogbookPage() {
                   onChange={(e) => setEndTime(e.target.value)}
                   className="w-full border-0 p-0 text-sm font-bold text-[#111827] focus:ring-0 bg-transparent cursor-pointer"
                 />
-                <i className="fa-regular fa-clock text-zinc-400 text-xs shrink-0 pointer-events-none ml-1"></i>
               </div>
             </div>
           </div>
 
-          {/* Title & Lokasi Kegiatan */}
           <div className="bg-white rounded-[26px] p-4 space-y-3 shadow-2xs">
             <div>
-              <label className="block text-xs font-semibold text-[#111827]">Judul Kegiatan Harian</label>
+              <label htmlFor="log-title" className="block text-xs font-semibold text-[#111827]">Judul Kegiatan Harian</label>
               <input
+                id="log-title"
                 type="text"
                 required
                 value={title}
@@ -275,8 +249,9 @@ export default function CreateLogbookPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#111827]">Lokasi Kegiatan</label>
+              <label htmlFor="log-location" className="block text-xs font-semibold text-[#111827]">Lokasi Kegiatan</label>
               <select
+                id="log-location"
                 value={workLocation}
                 onChange={(e) => setWorkLocation(e.target.value as 'kantor' | 'lapangan')}
                 className="mt-1.5 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs font-semibold text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]"
@@ -287,71 +262,29 @@ export default function CreateLogbookPage() {
             </div>
           </div>
 
-          {/* Description Section with Slider Pills */}
           <section className="bg-kinra-grid rounded-[28px] p-5 space-y-3 shadow-xs text-white">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-white flex items-center gap-2">
-                <i className="fa-solid fa-pen-clip"></i>
-                <span>Deskripsi Kegiatan Harian</span>
-              </span>
-            </div>
-
+            <label htmlFor="log-desc" className="text-xs font-bold text-white flex items-center gap-2">
+              <i className="fa-solid fa-pen-clip"></i>
+              <span>Deskripsi Kegiatan Harian</span>
+            </label>
             <textarea
-              rows={3}
+              id="log-desc"
+              rows={4}
               required
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Tuliskan rincian kegiatan harian yang kamu kerjakan hari ini..."
               className="w-full rounded-[18px] bg-white border-0 p-3.5 text-xs text-[#111827] leading-relaxed focus:ring-2 focus:ring-[#FDE9B4]"
             />
-
-            {/* Slider Action Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 pt-0.5 -mx-1 px-1">
-              <button
-                type="button"
-                onClick={() => alert('Fitur Rapikan AI akan segera hadir.')}
-                className="shrink-0 h-9 bg-[#18181B] hover:bg-[#27272A] text-white text-xs font-semibold px-4 rounded-full flex items-center gap-2 shadow-xs transition cursor-pointer"
-              >
-                <i className="fa-solid fa-wand-magic-sparkles text-[#FDE9B4] text-xs"></i>
-                <span className="whitespace-nowrap">Rapikan AI</span>
-                <span className="bg-[#C8EBE5] text-[#074745] text-[9px] font-bold px-2 py-0.5 rounded-full">
-                  Segera
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => alert('Fitur Rekam Suara (Voice-to-Log) akan segera hadir.')}
-                className="shrink-0 h-9 bg-white hover:bg-[#F4F7F6] text-[#074745] text-xs font-semibold px-4 rounded-full flex items-center gap-2 shadow-xs transition cursor-pointer"
-              >
-                <i className="fa-solid fa-microphone-lines text-[#0B6E6C] text-xs"></i>
-                <span className="whitespace-nowrap">Rekam Suara</span>
-                <span className="bg-[#FDE9B4] text-[#78350F] text-[9px] font-bold px-2 py-0.5 rounded-full">
-                  Lanjutan
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => alert('Fitur Ambil Foto Langsung akan segera hadir.')}
-                className="shrink-0 h-9 bg-[#D4EEFC] hover:bg-[#BCE3FA] text-[#0C4A6E] text-xs font-semibold px-4 rounded-full flex items-center gap-2 shadow-xs transition cursor-pointer"
-              >
-                <i className="fa-solid fa-camera text-[#0C4A6E] text-xs"></i>
-                <span className="whitespace-nowrap">Ambil Foto</span>
-                <span className="bg-white/80 text-[#0C4A6E] text-[9px] font-bold px-2 py-0.5 rounded-full">
-                  Fitur
-                </span>
-              </button>
-            </div>
           </section>
 
-          {/* Output, Obstacles & Photo Upload */}
-          <div className="bg-white rounded-[26px] p-4 space-y-3 shadow-2xs">
+          <div className="bg-white rounded-[26px] p-4 space-y-4 shadow-2xs">
             <div>
-              <label className="block text-xs font-semibold text-[#111827]">
+              <label htmlFor="log-output" className="block text-xs font-semibold text-[#111827]">
                 Hasil / Output Kerja (Teks atau Link Dokumen / Drive)
               </label>
               <input
+                id="log-output"
                 type="text"
                 value={output}
                 onChange={(e) => setOutput(e.target.value)}
@@ -361,8 +294,9 @@ export default function CreateLogbookPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#111827]">Kendala (Opsional)</label>
+              <label htmlFor="log-obstacles" className="block text-xs font-semibold text-[#111827]">Kendala (opsional)</label>
               <input
+                id="log-obstacles"
                 type="text"
                 value={obstacles}
                 onChange={(e) => setObstacles(e.target.value)}
@@ -371,27 +305,16 @@ export default function CreateLogbookPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-[#111827]">
-                Lampiran Bukti Foto (Opsional)
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
-                className="mt-1.5 block w-full text-xs text-zinc-500 file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#C8EBE5] file:text-[#074745]"
-              />
-            </div>
+            <AttachmentUploader files={files} onChange={setFiles} disabled={loading} />
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-[#0B6E6C] hover:bg-[#085856] text-white text-sm font-bold py-4 rounded-full shadow-md transition active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
           >
             <i className="fa-solid fa-floppy-disk"></i>
-            <span>{loading ? 'Menyimpan...' : 'Simpan Logbook Harian'}</span>
+            <span>{loading ? 'Menyimpan...' : 'Kirim Logbook ke Mentor'}</span>
           </button>
         </form>
       )}

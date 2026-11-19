@@ -4,10 +4,20 @@ import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { Logbook } from '@/types/database';
+import { AttachmentGallery } from '@/components/attachments/AttachmentGallery';
+import { useFeedback } from '@/components/feedback/FeedbackProvider';
+
+const STATUS_CHIP = {
+  approved: { label: 'Disetujui', icon: 'fa-circle-check', cls: 'bg-white text-[#0B6E6C]' },
+  submitted: { label: 'Menunggu review', icon: 'fa-hourglass-half', cls: 'bg-[#FDE9B4] text-[#78350F]' },
+  rejected: { label: 'Perlu revisi', icon: 'fa-rotate-left', cls: 'bg-[#FCE1D4] text-[#9A3412]' },
+  draft: { label: 'Draf', icon: 'fa-pen', cls: 'bg-white/80 text-[#111827]' },
+} as const;
 
 export default function LogbookDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const supabase = createClient();
+  const { say } = useFeedback();
 
   const [logbook, setLogbook] = useState<Logbook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,13 +52,27 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
       : `https://${logbook.output!.trim()}`
     : null;
 
+  const status = STATUS_CHIP[logbook.status] ?? STATUS_CHIP.submitted;
+  const bukti = logbook.attachments ?? [];
+
+  const readAloud = () => {
+    const parts = [
+      `Rincian logbook. ${logbook.title}.`,
+      `Tanggal ${logbook.date}, pukul ${logbook.start_time.slice(0, 5)} sampai ${logbook.end_time.slice(0, 5)}.`,
+      `Deskripsi. ${logbook.final_description}.`,
+    ];
+    if (logbook.output) parts.push(`Hasil. ${logbook.output}.`);
+    if (logbook.obstacles) parts.push(`Kendala. ${logbook.obstacles}.`);
+    say(parts.join(' '), { force: true });
+  };
+
   return (
     <div className="flex-1 px-5 pt-4 pb-8 space-y-4">
-      {/* Header */}
       <header className="flex items-center justify-between">
         <Link
           href="/logbook"
           className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#18181B] shadow-2xs hover:scale-105 transition"
+          aria-label="Kembali"
         >
           <i className="fa-solid fa-chevron-left text-sm"></i>
         </Link>
@@ -62,68 +86,61 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
         </Link>
       </header>
 
-      {/* Main Info Card */}
       <section className="bg-kinra-grid rounded-[28px] p-5 text-white shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 bg-white text-[#0B6E6C] text-[11px] font-bold px-3 py-1 rounded-full">
-            <i className="fa-solid fa-circle-check"></i>
-            <span>Disetujui</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full ${status.cls}`}>
+            <i className={`fa-solid ${status.icon}`}></i>
+            <span>{status.label}</span>
           </span>
           <span className="inline-flex items-center gap-1.5 bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full">
-            <i
-              className={
-                logbook.work_location === 'lapangan'
-                  ? 'fa-solid fa-person-digging'
-                  : 'fa-solid fa-building'
-              }
-            ></i>
+            <i className={logbook.work_location === 'lapangan' ? 'fa-solid fa-person-digging' : 'fa-solid fa-building'}></i>
             <span>{logbook.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'}</span>
           </span>
         </div>
 
         <h2 className="text-[19px] font-bold text-white leading-snug">{logbook.title}</h2>
+
+        <button type="button" onClick={readAloud} className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full transition">
+          <i className="fa-solid fa-volume-high" aria-hidden="true"></i>
+          Bacakan rincian
+        </button>
       </section>
 
-      {/* Bento Meta Grid */}
+      {logbook.status === 'rejected' && logbook.review_notes && (
+        <div className="auth-alert auth-alert-error" role="alert">
+          <i className="fa-solid fa-rotate-left" aria-hidden="true"></i>
+          <span>
+            <strong>Catatan mentor:</strong> {logbook.review_notes}
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-[24px] p-4 shadow-2xs">
-          <span className="text-[11px] font-semibold text-zinc-400">Tanggal Kegiatan</span>
-          <p className="text-sm font-bold text-[#111827] mt-1.5">{logbook.date}</p>
+          <span className="text-[11px] font-semibold text-zinc-400">Tanggal kegiatan</span>
+          <p className="text-sm font-bold text-[#111827] mt-1.5 tnum">{logbook.date}</p>
         </div>
-
         <div className="bg-white rounded-[24px] p-4 shadow-2xs">
-          <span className="text-[11px] font-semibold text-zinc-400">Jam Kegiatan</span>
-          <p className="text-sm font-bold text-[#111827] mt-1.5">
-            {logbook.start_time.slice(0, 5)} - {logbook.end_time.slice(0, 5)}
+          <span className="text-[11px] font-semibold text-zinc-400">Jam kegiatan</span>
+          <p className="text-sm font-bold text-[#111827] mt-1.5 tnum">
+            {logbook.start_time.slice(0, 5)} – {logbook.end_time.slice(0, 5)}
           </p>
         </div>
       </div>
 
-      {/* Description & Output */}
       <div className="bg-white rounded-[26px] p-5 space-y-3.5 shadow-2xs">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-            Deskripsi Pekerjaan
-          </p>
-          <p className="text-xs text-[#111827] leading-relaxed mt-1.5 whitespace-pre-line">
-            {logbook.final_description}
-          </p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Deskripsi pekerjaan</p>
+          <p className="text-xs text-[#111827] leading-relaxed mt-1.5 whitespace-pre-line">{logbook.final_description}</p>
         </div>
 
         {logbook.output && (
           <div className="pt-3 border-t border-zinc-100">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-              Hasil / Output
-            </p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Hasil / output</p>
             {linkHref ? (
-              <a
-                href={linkHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0B6E6C] hover:underline bg-[#C8EBE5] px-3.5 py-1.5 rounded-full mt-1.5"
-              >
+              <a href={linkHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0B6E6C] hover:underline bg-[#C8EBE5] px-3.5 py-1.5 rounded-full mt-1.5">
                 <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
-                <span className="truncate max-w-[280px]">Buka Link: {logbook.output}</span>
+                <span className="truncate max-w-[280px]">Buka link: {logbook.output}</span>
               </a>
             ) : (
               <p className="text-xs font-semibold text-[#0B6E6C] mt-1">{logbook.output}</p>
@@ -137,30 +154,20 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
             <p className="text-xs text-zinc-700 mt-1">{logbook.obstacles}</p>
           </div>
         )}
-
-        {/* Documentation Attachments Preview */}
-        {logbook.attachments && logbook.attachments.length > 0 && (
-          <div className="pt-3 border-t border-zinc-100">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
-              Bukti Dokumentasi Foto
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {logbook.attachments.map((att) => (
-                <a
-                  key={att.id}
-                  href={att.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-[16px] overflow-hidden border border-zinc-200 block shadow-2xs hover:opacity-90 transition"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={att.file_url} alt="Dokumentasi" className="w-full h-28 object-cover" />
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
+
+      <section id="bukti" className="bg-white rounded-[26px] p-5 space-y-3.5 shadow-2xs scroll-mt-6" aria-labelledby="bukti-title">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 id="bukti-title" className="text-sm font-semibold text-[#111827]">Bukti dokumentasi</h2>
+            <p className="text-[11px] text-zinc-500">{bukti.length} lampiran · ketuk untuk memperbesar</p>
+          </div>
+          <Link href={`/logbook/${logbook.id}/edit#bukti`} className="text-xs font-bold text-[#0B6E6C] hover:underline">
+            Kelola bukti
+          </Link>
+        </div>
+        <AttachmentGallery items={bukti} emptyText="Belum ada bukti dokumentasi untuk logbook ini." />
+      </section>
     </div>
   );
 }

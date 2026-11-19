@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { TopBar, FloatingDock } from '@/components/Navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Logbook } from '@/types/database';
 
@@ -74,10 +73,8 @@ export default function LogbookCalendarPage() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col pb-24">
-      <TopBar />
-
-      <div className="px-5 pt-3 space-y-4">
+    <div className="flex-1 flex flex-col space-y-4">
+      <div className="space-y-4">
         {/* Month Navigator Header */}
         <header className="flex items-center justify-between">
           <button
@@ -201,8 +198,6 @@ export default function LogbookCalendarPage() {
           )}
         </section>
       </div>
-
-      <FloatingDock />
     </div>
   );
 }

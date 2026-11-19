@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { TopBar, FloatingDock } from '@/components/Navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Logbook, Profile } from '@/types/database';
 
@@ -47,12 +46,8 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col pb-24">
-      <div className="print:hidden">
-        <TopBar />
-      </div>
-
-      <div className="px-5 pt-3 space-y-4 print:p-0 print:m-0">
+    <div className="flex-1 flex flex-col space-y-4">
+      <div className="space-y-4 print:p-0 print:m-0">
         {/* Screen Header (Hidden on Print) */}
         <header className="flex items-center justify-between print:hidden">
           <Link
@@ -76,7 +71,7 @@ export default function ReportsPage() {
           {/* Letterhead */}
           <div className="border-b-2 border-[#0B6E6C] pb-3 flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/kinra.png" alt="KINRA Sei Mangkei" className="h-10 w-auto object-contain" />
+            <img src="/images/logo/kinra-logo.png" alt="KINRA Sei Mangkei" className="h-10 w-auto object-contain" />
             <div>
               <h2 className="font-bold text-[#0B6E6C] uppercase text-sm tracking-wide">
                 PT Kawasan Industri Nusantara (KINRA Sei Mangkei)
@@ -163,20 +158,18 @@ export default function ReportsPage() {
                             log.output || '-'
                           )}
 
+                          {log.attachments && log.attachments.length > 0 ? (
+                            <Link
+                              href={`/logbook/${log.id}#bukti`}
+                              className="print:hidden mt-1 inline-flex items-center gap-1 bg-[#C8EBE5] text-[#074745] font-bold text-[9px] px-2 py-0.5 rounded-full"
+                            >
+                              Cek bukti ({log.attachments.length})
+                            </Link>
+                          ) : (
+                            <span className="print:hidden mt-1 inline-block text-[9px] font-bold text-amber-700">Belum ada bukti</span>
+                          )}
                           {log.attachments && log.attachments.length > 0 && (
-                            <div className="mt-1 space-y-1">
-                              {log.attachments.map((att, aIdx) => (
-                                <a
-                                  key={att.id}
-                                  href={att.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-block bg-[#C8EBE5] text-[#074745] font-bold text-[9px] px-2 py-0.5 rounded-full"
-                                >
-                                  🖼️ Lihat Foto Bukti #{aIdx + 1}
-                                </a>
-                              ))}
-                            </div>
+                            <span className="hidden print:inline text-[9px]">{log.attachments.length} lampiran bukti</span>
                           )}
                         </td>
                         <td className="p-2 align-top font-bold">
@@ -204,10 +197,6 @@ export default function ReportsPage() {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="print:hidden">
-        <FloatingDock />
       </div>
     </div>
   );

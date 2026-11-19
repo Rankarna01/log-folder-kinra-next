@@ -4,14 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Mentor } from '@/types/database';
 import { useToast } from '@/components/feedback/FeedbackProvider';
+import { useDivisions } from '@/lib/divisions';
 
-export const DIVISIONS = [
-  'Divisi Teknologi Informasi',
-  'Divisi Operasional & Kawasan',
-  'Divisi Keuangan & Akuntansi',
-  'Divisi Umum, SDM & Hukum',
-  'Divisi Teknik & Pemeliharaan',
-];
 
 /** Form lengkapi profil peserta. Dipakai di modal setelah daftar dan di halaman /onboarding. */
 export function ProfileSetupForm({ onDone }: { onDone: () => void }) {
@@ -20,7 +14,9 @@ export function ProfileSetupForm({ onDone }: { onDone: () => void }) {
 
   const [name, setName] = useState('');
   const [nimNik, setNimNik] = useState('');
-  const [division, setDivision] = useState(DIVISIONS[0]);
+  const { divisions } = useDivisions();
+  const [divisionPick, setDivision] = useState('');
+  const division = divisionPick || divisions[0] || '';
   const [position, setPosition] = useState('');
   const [mentors, setMentors] = useState<Mentor[]>([]);
   const [mentorId, setMentorId] = useState('');
@@ -120,7 +116,7 @@ export function ProfileSetupForm({ onDone }: { onDone: () => void }) {
       <div className="kc-field">
         <label htmlFor="ps-div">Divisi penempatan <span className="kc-req">*</span></label>
         <select id="ps-div" value={division} onChange={(e) => setDivision(e.target.value)}>
-          {DIVISIONS.map((d) => (
+          {divisions.map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
         </select>

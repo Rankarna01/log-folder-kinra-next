@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { DIVISIONS } from '@/components/onboarding/ProfileSetupForm';
+import { useDivisions } from '@/lib/divisions';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import type { Mentor } from '@/types/database';
+import { PageHead, StatTiles, StatTile, Skeleton, EmptyState } from '@/components/ui/Kit';
 import { generatePassword, MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
 
 type Draft = {
@@ -22,7 +23,7 @@ type Draft = {
 
 const EMPTY_DRAFT: Draft = {
   name: '',
-  division: DIVISIONS[0],
+  division: '',
   position: '',
   email: '',
   phone: '',
@@ -40,6 +41,7 @@ export default function AdminMentorsPage() {
   const supabase = createClient();
   const { toast } = useToast();
 
+  const { divisions } = useDivisions();
   const [loading, setLoading] = useState(true);
   const [mentors, setMentors] = useState<Mentor[]>([]);
   const [pesertaByMentor, setPesertaByMentor] = useState<Record<string, number>>({});
@@ -141,7 +143,7 @@ export default function AdminMentorsPage() {
 
     const payload = {
       name: draft.name.trim(),
-      division: draft.division,
+      division: draft.division || divisions[0] || '',
       position: draft.position.trim(),
       email: draft.email.trim() || null,
       phone: draft.phone.trim() || null,
@@ -251,48 +253,27 @@ export default function AdminMentorsPage() {
   };
 
   if (loading) {
-    return <div className="kc-skeleton" aria-busy="true" style={{ height: 260 }} />;
+    return <Skeleton height={260} />;
   }
 
   return (
     <div className="kc-page">
-      <header className="kc-head" style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div>
-          <p className="kc-eyebrow">Super admin · Data mentor</p>
-          <h1>{mentors.length} mentor terdaftar, {totals.active} aktif</h1>
-          <p>Kelola mentor pembimbing yang dipilih peserta saat mendaftar. Jumlah peserta dihitung langsung dari profil.</p>
-        </div>
-        <button type="button" className="kc-btn kc-btn-primary" onClick={openNew}>
+      <PageHead
+        eyebrow="Super admin · Data mentor"
+        title={`${mentors.length} mentor terdaftar, ${totals.active} aktif`}
+        lead="Kelola mentor pembimbing yang dipilih peserta saat mendaftar. Jumlah peserta dihitung langsung dari profil."
+        actions={
+          <button type="button" className="kc-btn kc-btn-primary" onClick={openNew}>
           <i className="fa-solid fa-plus" aria-hidden="true"></i> Tambah mentor
         </button>
-      </header>
+        }
+      />
 
-      <section className="kc-tiles" aria-label="Ringkasan mentor">
-        <div className="kc-tile">
-          <div className="kc-tile-top">
-            <span className="kc-tile-icon"><i className="fa-solid fa-chalkboard-user" aria-hidden="true"></i></span>
-            <span className="kc-tile-label">Mentor aktif</span>
-          </div>
-          <span className="kc-tile-num">{totals.active}</span>
-          <div className="kc-tile-meta">Dari {mentors.length} data</div>
-        </div>
-        <div className="kc-tile">
-          <div className="kc-tile-top">
-            <span className="kc-tile-icon"><i className="fa-solid fa-user-graduate" aria-hidden="true"></i></span>
-            <span className="kc-tile-label">Peserta dibimbing</span>
-          </div>
-          <span className="kc-tile-num">{totals.peserta}</span>
-          <div className="kc-tile-meta">Peserta yang sudah memilih mentor</div>
-        </div>
-        <div className="kc-tile">
-          <div className="kc-tile-top">
-            <span className="kc-tile-icon"><i className="fa-solid fa-clone" aria-hidden="true"></i></span>
-            <span className="kc-tile-label">Nama ganda</span>
-          </div>
-          <span className="kc-tile-num">{totals.duplicates}</span>
-          <div className="kc-tile-meta">{totals.duplicates > 0 ? 'Perlu dirapikan' : 'Tidak ada'}</div>
-        </div>
-      </section>
+      <StatTiles label="Ringkasan mentor">
+        <StatTile icon="fa-solid fa-chalkboard-user" label="Mentor aktif" value={totals.active} meta={`Dari ${mentors.length} data`} />
+        <StatTile icon="fa-solid fa-user-graduate" label="Peserta dibimbing" value={totals.peserta} meta="Peserta yang sudah memilih mentor" />
+        <StatTile icon="fa-solid fa-clone" label="Nama ganda" value={totals.duplicates} meta={totals.duplicates > 0 ? 'Perlu dirapikan' : 'Tidak ada'} />
+      </StatTiles>
 
       <div className="kc-toolbar">
         <label className="kc-search">
@@ -306,7 +287,7 @@ export default function AdminMentorsPage() {
           className="kc-input-inline"
         >
           <option value="all">Semua divisi</option>
-          {DIVISIONS.map((d) => (
+          {divisions.map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
         </select>
@@ -318,7 +299,7 @@ export default function AdminMentorsPage() {
       </div>
 
       {visible.length === 0 ? (
-        <div className="kc-empty">{mentors.length === 0 ? 'Belum ada mentor. Tambahkan mentor pertama.' : 'Tidak ada mentor yang cocok.'}</div>
+        <EmptyState>{mentors.length === 0 ? 'Belum ada mentor. Tambahkan mentor pertama.' : 'Tidak ada mentor yang cocok.'}</EmptyState>
       ) : (
         <div className="kc-grid">
           {visible.map((m) => {
@@ -411,8 +392,8 @@ export default function AdminMentorsPage() {
               </div>
               <div className="kc-field">
                 <label htmlFor="m-div">Divisi <span className="kc-req">*</span></label>
-                <select id="m-div" value={draft.division} onChange={(e) => setDraft({ ...draft, division: e.target.value })}>
-                  {DIVISIONS.map((d) => (
+                <select id="m-div" value={draft.division || divisions[0] || ''} onChange={(e) => setDraft({ ...draft, division: e.target.value })}>
+                  {divisions.map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>

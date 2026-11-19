@@ -1,203 +1,199 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import type { Logbook } from '@/types/database';
+import { LogbookModal } from '@/components/logbook/LogbookModal';
 
-export default function LogbookCalendarPage() {
+type MiniLog = { id: string; date: string; status: 'draft' | 'submitted' | 'approved' | 'rejected'; title: string; start_time: string; end_time: string };
+
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const WEEK = ['Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb', 'Mg'];
+const pad = (n: number) => String(n).padStart(2, '0');
+const isoOf = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
+const todayIso = () => {
+  const t = new Date();
+  return isoOf(t.getFullYear(), t.getMonth(), t.getDate());
+};
+
+const STATUS_STYLE: Record<MiniLog['status'], { cell: string; label: string; icon: string }> = {
+  approved: { cell: 'kc-day-approved', label: 'Terverifikasi', icon: 'fa-lock' },
+  submitted: { cell: 'kc-day-submitted', label: 'Menunggu review', icon: 'fa-hourglass-half' },
+  rejected: { cell: 'kc-day-rejected', label: 'Perlu revisi', icon: 'fa-rotate-left' },
+  draft: { cell: 'kc-day-submitted', label: 'Draf', icon: 'fa-pen' },
+};
+
+function CalendarInner() {
   const supabase = createClient();
+  const params = useSearchParams();
 
-  const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [monthLogs, setMonthLogs] = useState<Logbook[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialDate = params.get('date');
+  const [current, setCurrent] = useState(() => {
+    const base = initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? new Date(initialDate) : new Date();
+    return new Date(base.getFullYear(), base.getMonth(), 1);
+  });
+  const [selected, setSelected] = useState<string>(() => (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayIso()));
+  const [modalDate, setModalDate] = useState<string | null>(() =>
+    params.get('open') === '1' && initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : null
+  );
+  const [logs, setLogs] = useState<MiniLog[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
+  const year = current.getFullYear();
+  const month = current.getMonth();
 
   useEffect(() => {
-    async function loadLogs() {
-      setLoading(true);
+    let active = true;
+    async function load() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
       if (!user) return;
-
-      const firstDay = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-      const lastDay = `${year}-${String(month + 1).padStart(2, '0')}-31`;
-
+      const first = isoOf(year, month, 1);
+      const last = isoOf(year, month, new Date(year, month + 1, 0).getDate());
       const { data } = await supabase
         .from('logbooks')
-        .select('*')
+        .select('id,date,status,title,start_time,end_time')
         .eq('user_id', user.id)
-        .gte('date', firstDay)
-        .lte('date', lastDay);
-
-      if (data) setMonthLogs(data as Logbook[]);
-      setLoading(false);
+        .gte('date', first)
+        .lte('date', last);
+      if (active) setLogs((data as MiniLog[]) ?? []);
     }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [year, month, supabase, reloadKey]);
 
-    loadLogs();
-  }, [year, month, supabase]);
+  const byDate = useMemo(() => new Map(logs.map((l) => [l.date, l])), [logs]);
 
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-
-  // Calendar matrix calculation
-  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0 is Sunday
+  // Susun sel kalender, mulai dari Senin
+  const offset = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: ({ day: number; iso: string } | null)[] = [];
+  for (let i = 0; i < offset; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, iso: isoOf(year, month, d) });
 
-  // Shift to start from Monday (0: Monday, 6: Sunday)
-  const offset = (firstDayOfWeek + 6) % 7;
-  const calendarCells = [];
-
-  for (let i = 0; i < offset; i++) {
-    calendarCells.push(null);
-  }
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    calendarCells.push({
-      day,
-      dateStr,
-      isFilled: monthLogs.some((l) => l.date === dateStr),
-      isSelected: selectedDate === dateStr,
+  const counts = useMemo(() => {
+    const c = { approved: 0, submitted: 0, rejected: 0 };
+    logs.forEach((l) => {
+      if (l.status === 'approved') c.approved += 1;
+      else if (l.status === 'rejected') c.rejected += 1;
+      else c.submitted += 1;
     });
-  }
+    return c;
+  }, [logs]);
 
-  const selectedDayLog = monthLogs.find((l) => l.date === selectedDate);
-  const monthNames = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-  ];
+  const selectedLog = byDate.get(selected);
+  // Navigasi dibatasi 6 bulan ke belakang dan 6 bulan ke depan dari bulan ini
+  const now = new Date();
+  const monthIndex = (d: Date) => d.getFullYear() * 12 + d.getMonth();
+  const curIdx = monthIndex(new Date(year, month, 1));
+  const baseIdx = monthIndex(new Date(now.getFullYear(), now.getMonth(), 1));
+  const canGo = (n: number) => Math.abs(curIdx + n - baseIdx) <= 6;
+  const shift = (n: number) => {
+    if (canGo(n)) setCurrent(new Date(year, month + n, 1));
+  };
 
   return (
-    <div className="flex-1 flex flex-col space-y-4">
-      <div className="space-y-4">
-        {/* Month Navigator Header */}
-        <header className="flex items-center justify-between">
-          <button
-            onClick={prevMonth}
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#0B6E6C] shadow-2xs hover:scale-105 transition cursor-pointer"
-          >
-            <i className="fa-solid fa-chevron-left text-xs"></i>
-          </button>
+    <div className="kc-cal">
+      <header className="kc-cal-head">
+        <button type="button" onClick={() => shift(-1)} disabled={!canGo(-1)} className="kc-cal-nav" aria-label="Bulan sebelumnya">
+          <i className="fa-solid fa-chevron-left" aria-hidden="true"></i>
+        </button>
+        <h1>
+          {MONTHS[month]} <span>{year}</span>
+        </h1>
+        <button type="button" onClick={() => shift(1)} disabled={!canGo(1)} className="kc-cal-nav" aria-label="Bulan berikutnya">
+          <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+        </button>
+      </header>
 
-          <div className="text-center">
-            <h1 className="text-[17px] font-semibold text-[#111827]">
-              Kalender Logbook • {monthNames[month]} {year}
-            </h1>
-          </div>
-
-          <button
-            onClick={nextMonth}
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#0B6E6C] shadow-2xs hover:scale-105 transition cursor-pointer"
-          >
-            <i className="fa-solid fa-chevron-right text-xs"></i>
-          </button>
-        </header>
-
-        {/* Calendar Grid Card */}
-        <section className="bg-white rounded-[28px] p-4 shadow-2xs">
-          <div className="grid grid-cols-7 gap-1.5 text-center mb-2">
-            {['Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb', 'Mg'].map((label) => (
-              <span key={label} className="text-[10px] font-semibold text-zinc-400 uppercase">
-                {label}
-              </span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-2 text-center">
-            {calendarCells.map((cell, idx) => {
-              if (!cell) {
-                return <div key={`empty-${idx}`} className="aspect-square rounded-[13px] bg-transparent"></div>;
-              }
-
-              let cellStyle = 'bg-transparent text-[#111827] font-semibold hover:bg-zinc-100';
-              if (cell.isSelected) {
-                cellStyle = 'bg-[#0B6E6C] text-white font-bold shadow-xs';
-              } else if (cell.isFilled) {
-                cellStyle = 'bg-[#FDE9B4] text-[#111827] font-semibold';
-              }
-
-              return (
-                <button
-                  key={cell.dateStr}
-                  onClick={() => setSelectedDate(cell.dateStr)}
-                  className={`aspect-square rounded-[13px] flex items-center justify-center text-xs transition cursor-pointer ${cellStyle}`}
-                >
-                  {cell.day}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Catatan Kegiatan Harian pada Tanggal Terpilih */}
-        <section className="bg-white rounded-[28px] p-5 shadow-2xs space-y-3.5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[16px] font-semibold text-[#111827]">Catatan Kegiatan Harian</h2>
-            <span className="text-xs font-medium text-[#0B6E6C] flex items-center gap-1">
-              <i className="fa-regular fa-calendar"></i>
-              <span>{selectedDate}</span>
-            </span>
-          </div>
-
-          {selectedDayLog ? (
-            <div className="bg-[#F4F7F6] rounded-[20px] p-4 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-9 h-9 rounded-full bg-[#0B6E6C] text-white flex items-center justify-center text-xs font-bold shrink-0">
-                    <i className="fa-solid fa-check"></i>
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-[#111827] truncate">{selectedDayLog.title}</p>
-                    <p className="text-[11px] text-zinc-500 flex items-center gap-1.5 mt-0.5">
-                      <i className="fa-regular fa-clock text-[#0B6E6C]"></i>
-                      <span>
-                        {selectedDayLog.start_time.slice(0, 5)} - {selectedDayLog.end_time.slice(0, 5)}
-                      </span>
-                      <span>•</span>
-                      <span>{selectedDayLog.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'}</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-zinc-700 leading-relaxed">{selectedDayLog.final_description}</p>
-
-              <div className="flex items-center gap-2 pt-1">
-                <Link
-                  href={`/logbook/${selectedDayLog.id}/edit`}
-                  className="flex-1 bg-[#0B6E6C] text-white text-xs font-semibold py-2 rounded-full text-center flex items-center justify-center gap-1.5 shadow-2xs hover:bg-[#085856] transition"
-                >
-                  <i className="fa-solid fa-pen-to-square"></i>
-                  <span>Edit</span>
-                </Link>
-                <Link
-                  href={`/logbook/${selectedDayLog.id}`}
-                  className="flex-1 bg-white border border-zinc-200 text-[#111827] text-xs font-semibold py-2 rounded-full text-center flex items-center justify-center gap-1.5 shadow-2xs hover:bg-zinc-50 transition"
-                >
-                  <i className="fa-solid fa-eye"></i>
-                  <span>Detail</span>
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-zinc-400">Belum ada catatan pada tanggal ini.</p>
-              <Link
-                href={`/logbook/create?date=${selectedDate}`}
-                className="bg-[#0B6E6C] hover:bg-[#085856] text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-2xs transition shrink-0"
+      <section className="kc-cal-card" aria-label="Kalender logbook">
+        <div className="kc-cal-week">
+          {WEEK.map((w) => (
+            <span key={w}>{w}</span>
+          ))}
+        </div>
+        <div className="kc-cal-grid">
+          {cells.map((cell, i) => {
+            if (!cell) return <span key={`e-${i}`} />;
+            const log = byDate.get(cell.iso);
+            const isToday = cell.iso === todayIso();
+            const classes = [
+              'kc-day',
+              log ? STATUS_STYLE[log.status].cell : '',
+              cell.iso === selected ? 'kc-day-selected' : '',
+              isToday ? 'kc-day-today' : '',
+            ].join(' ');
+            return (
+              <button
+                key={cell.iso}
+                type="button"
+                className={classes}
+                onClick={() => {
+                  setSelected(cell.iso);
+                  setModalDate(cell.iso);
+                }}
+                aria-label={`${cell.day} ${MONTHS[month]}${log ? `, ${STATUS_STYLE[log.status].label}` : ''}`}
               >
-                <i className="fa-solid fa-plus text-[9px]"></i>
-                <span>Catat Tanggal</span>
-              </Link>
-            </div>
-          )}
-        </section>
-      </div>
+                {cell.day}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <ul className="kc-cal-legend" aria-label="Keterangan status">
+        <li><i className="kc-dot kc-dot-approved" aria-hidden="true"></i>Terverifikasi <b>{counts.approved}</b></li>
+        <li><i className="kc-dot kc-dot-submitted" aria-hidden="true"></i>Menunggu <b>{counts.submitted}</b></li>
+        <li><i className="kc-dot kc-dot-rejected" aria-hidden="true"></i>Revisi <b>{counts.rejected}</b></li>
+      </ul>
+
+      {modalDate ? (
+        <div className="kc-cal-form">
+          <LogbookModal
+            key={modalDate}
+            inline
+            date={modalDate}
+            onClose={() => setModalDate(null)}
+            onChanged={() => setReloadKey((k) => k + 1)}
+          />
+        </div>
+      ) : (
+      <section className="kc-cal-day" aria-label="Logbook tanggal terpilih">
+        <div className="kc-cal-day-head">
+          <span className="kc-eyebrow">{selected}</span>
+        </div>
+        {selectedLog ? (
+          <button type="button" className="kc-cal-entry" onClick={() => setModalDate(selected)}>
+            <span className={`kc-cal-chip ${STATUS_STYLE[selectedLog.status].cell}`}>
+              <i className={`fa-solid ${STATUS_STYLE[selectedLog.status].icon}`} aria-hidden="true"></i>
+              {STATUS_STYLE[selectedLog.status].label}
+            </span>
+            <b>{selectedLog.title}</b>
+            <small>{selectedLog.start_time.slice(0, 5)} – {selectedLog.end_time.slice(0, 5)}</small>
+          </button>
+        ) : (
+          <div className="kc-cal-empty">
+            <p>Belum ada logbook di tanggal ini.</p>
+            <button type="button" className="kc-cal-add" onClick={() => setModalDate(selected)}>
+              <i className="fa-solid fa-plus" aria-hidden="true"></i> Catat logbook
+            </button>
+          </div>
+        )}
+      </section>
+      )}
+
+
     </div>
+  );
+}
+
+export default function LogbookCalendarPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-xs text-zinc-500 text-center">Memuat kalender…</div>}>
+      <CalendarInner />
+    </Suspense>
   );
 }

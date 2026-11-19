@@ -6,6 +6,13 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Logbook, Profile } from '@/types/database';
 
+/** Buka kalender dengan modal logbook untuk hari ini. */
+function calendarToday() {
+  const t = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `/logbook?date=${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}&open=1`;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -138,7 +145,7 @@ export default function DashboardPage() {
 
             {!todayLog ? (
               <Link
-                href="/logbook/create"
+                href={calendarToday()}
                 className="bg-white hover:bg-[#FDE9B4] text-[#0B6E6C] text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-xs transition shrink-0 flex items-center gap-1.5"
               >
                 <i className="fa-solid fa-plus text-[10px]"></i>
@@ -146,7 +153,7 @@ export default function DashboardPage() {
               </Link>
             ) : (
               <Link
-                href={`/logbook/${todayLog.id}/edit`}
+                href={calendarToday()}
                 className="bg-[#FDE9B4] hover:bg-white text-[#18181B] text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-xs transition shrink-0 flex items-center gap-1.5"
               >
                 <i className="fa-solid fa-pen-to-square text-[10px]"></i>
@@ -180,24 +187,6 @@ export default function DashboardPage() {
 
         {/* Quick Action Horizontal Pills */}
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
-          {!todayLog ? (
-            <Link
-              href="/logbook/create"
-              className="shrink-0 bg-[#18181B] text-white text-xs font-semibold px-3.5 py-2 rounded-full shadow-xs flex items-center gap-1.5 transition"
-            >
-              <i className="fa-solid fa-circle-plus"></i>
-              <span>Tambah Logbook</span>
-            </Link>
-          ) : (
-            <Link
-              href="/logbook/create"
-              className="shrink-0 bg-[#0B6E6C] text-white text-xs font-semibold px-3.5 py-2 rounded-full shadow-xs flex items-center gap-1.5 transition"
-            >
-              <i className="fa-solid fa-circle-check"></i>
-              <span>Logbook Hari Ini</span>
-            </Link>
-          )}
-
           <Link
             href="/logbook"
             className="shrink-0 bg-[#C8EBE5] hover:bg-[#B3E2DA] text-[#074745] text-xs font-semibold px-3.5 py-2 rounded-full shadow-xs flex items-center gap-1.5 transition"
@@ -234,7 +223,7 @@ export default function DashboardPage() {
             <div className="bg-white rounded-[26px] p-6 text-center space-y-3 shadow-xs">
               <p className="text-xs text-zinc-500 font-medium">Belum ada logbook harian tercatat.</p>
               <Link
-                href="/logbook/create"
+                href={calendarToday()}
                 className="inline-flex items-center gap-1.5 bg-[#0B6E6C] text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xs"
               >
                 <i className="fa-solid fa-plus text-[10px]"></i>

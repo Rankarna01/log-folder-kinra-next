@@ -1,0 +1,346 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { deleteAttachment, uploadAttachments, validateFiles } from '@/lib/attachments';
+import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
+import { AttachmentGallery } from '@/components/attachments/AttachmentGallery';
+import { useToast } from '@/components/feedback/FeedbackProvider';
+import type { Attachment, Logbook } from '@/types/database';
+
+type Props = {
+  date: string; // YYYY-MM-DD
+  onClose: () => void;
+  onChanged: () => void;
+  /** Tampil sebagai form biasa di dalam halaman, bukan overlay. */
+  inline?: boolean;
+};
+
+const dayLabel = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const names = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  return `${d} ${names[m - 1]} ${y}`;
+};
+
+/**
+ * Modal input logbook dari kalender.
+ * - Belum ada logbook  : form tambah.
+ * - Diajukan / revisi : form ubah (dan hapus).
+ * - Sudah approved     : tampil terkunci, hanya bisa dilihat.
+ */
+export function LogbookModal({ date, onClose, onChanged, inline = false }: Props) {
+  const supabase = createClient();
+  const { toast } = useToast();
+
+  const [loading, setLoading] = useState(true);
+  const [log, setLog] = useState<(Logbook & { attachments?: Attachment[] }) | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [title, setTitle] = useState('');
+  const [startTime, setStartTime] = useState('08:30');
+  const [endTime, setEndTime] = useState('12:00');
+  const [workLocation, setWorkLocation] = useState<'kantor' | 'lapangan'>('kantor');
+  const [description, setDescription] = useState('');
+  const [output, setOutput] = useState('');
+  const [obstacles, setObstacles] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+  const locked = log?.status === 'approved';
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('logbooks')
+        .select('*, attachments(*)')
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .maybeSingle();
+      if (!active) return;
+      const existing = (data as (Logbook & { attachments?: Attachment[] }) | null) ?? null;
+      setLog(existing);
+      if (existing) {
+        setTitle(existing.title);
+        setStartTime(existing.start_time.slice(0, 5));
+        setEndTime(existing.end_time.slice(0, 5));
+        setWorkLocation(existing.work_location);
+        setDescription(existing.final_description);
+        setOutput(existing.output || '');
+        setObstacles(existing.obstacles || '');
+        setAttachments(existing.attachments ?? []);
+      }
+      setLoading(false);
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [date, supabase]);
+
+  // Tutup dengan Esc, dan kunci scroll halaman di belakang
+  useEffect(() => {
+    if (inline) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose, inline]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (locked) return;
+    const limitErr = validateFiles(files, attachments.length);
+    if (limitErr) {
+      toast.warning(limitErr, 'Lampiran terlalu banyak');
+      return;
+    }
+
+    setSaving(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setSaving(false);
+      return;
+    }
+
+    const fields = {
+      title,
+      start_time: startTime + ':00',
+      end_time: endTime + ':00',
+      work_location: workLocation,
+      raw_description: description,
+      final_description: description,
+      output: output || null,
+      obstacles: obstacles || null,
+    };
+
+    let logbookId = log?.id;
+    if (log) {
+      // Revisi dikirim ulang ke mentor sebagai diajukan
+      const { error } = await supabase
+        .from('logbooks')
+        .update({ ...fields, status: 'submitted', updated_at: new Date().toISOString() })
+        .eq('id', log.id);
+      if (error) {
+        setSaving(false);
+        toast.error(error.message, 'Gagal memperbarui logbook');
+        return;
+      }
+    } else {
+      const { data, error } = await supabase
+        .from('logbooks')
+        .insert({ ...fields, user_id: user.id, date, status: 'submitted' })
+        .select()
+        .single();
+      if (error || !data) {
+        setSaving(false);
+        toast.error(error?.message ?? 'Logbook belum bisa disimpan.', 'Gagal menyimpan');
+        return;
+      }
+      logbookId = data.id;
+    }
+
+    if (files.length > 0 && logbookId) {
+      const { ok, failed } = await uploadAttachments(supabase, user.id, logbookId, files, title);
+      if (failed.length > 0) {
+        toast.warning(`${ok} bukti tersimpan, ${failed.length} gagal: ${failed.join(', ')}.`, 'Sebagian bukti gagal');
+      }
+    }
+
+    setSaving(false);
+    toast.success(log ? 'Perubahan logbook dikirim ulang ke mentor.' : 'Logbook dikirim ke mentor untuk ditinjau.');
+    onChanged();
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!log || locked) return;
+    if (!window.confirm('Hapus logbook pada tanggal ini? Bukti ikut terhapus.')) return;
+    const { error } = await supabase.from('logbooks').delete().eq('id', log.id);
+    if (error) {
+      toast.error(error.message, 'Gagal menghapus');
+      return;
+    }
+    toast.info('Logbook dihapus.');
+    onChanged();
+    onClose();
+  };
+
+  const handleRemoveAttachment = async (att: Attachment) => {
+    if (locked || !window.confirm('Hapus bukti ini?')) return;
+    const err = await deleteAttachment(supabase, att);
+    if (err) {
+      toast.error(err, 'Bukti gagal dihapus');
+      return;
+    }
+    setAttachments((list) => list.filter((a) => a.id !== att.id));
+    toast.success('Bukti dihapus.');
+  };
+
+  const body = (
+    <>
+        <div className="kc-modal-head">
+          <div>
+            <p className="kc-eyebrow">{dayLabel(date)}</p>
+            <h2 id="lb-modal-title">{log ? (locked ? 'Logbook terverifikasi' : 'Ubah logbook') : 'Catat logbook'}</h2>
+          </div>
+          <button type="button" className="kc-icon-btn" onClick={onClose} aria-label="Tutup">
+            <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="kc-skeleton" aria-busy="true" style={{ height: 240 }} />
+        ) : locked ? (
+          <div className="kc-form">
+            <div className="kc-note">
+              <i className="fa-solid fa-lock" aria-hidden="true"></i>
+              <span>
+                Sudah diverifikasi{log?.reviewed_by ? ` oleh ${log.reviewed_by}` : ' mentor'}. Logbook ini tidak bisa diubah lagi.
+              </span>
+            </div>
+            <ReadRow label="Judul" value={log?.title} />
+            <ReadRow label="Waktu" value={`${log?.start_time.slice(0, 5)} – ${log?.end_time.slice(0, 5)}`} />
+            <ReadRow label="Lokasi" value={log?.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'} />
+            <ReadRow label="Deskripsi" value={log?.final_description} multiline />
+            {log?.output && <ReadRow label="Hasil / output" value={log.output} />}
+            {log?.obstacles && <ReadRow label="Kendala" value={log.obstacles} />}
+            <div className="kc-field">
+              <span className="kc-label">Bukti dokumentasi</span>
+              <AttachmentGallery items={attachments} emptyText="Tidak ada bukti dilampirkan." />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="kc-btn" onClick={onClose}>Tutup</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSave} className="space-y-4">
+            {log?.status === 'rejected' && log.review_notes && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3.5 py-2.5 rounded-xl font-medium">
+                <strong>Catatan mentor:</strong> {log.review_notes}
+              </div>
+            )}
+
+            {/* Tanggal, jam & lokasi */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white rounded-[24px] p-4 shadow-2xs">
+                <span className="block text-[11px] font-semibold text-zinc-400">Tanggal Kegiatan</span>
+                <p className="mt-1 text-sm font-bold text-[#111827]">{dayLabel(date)}</p>
+              </div>
+              <div className="bg-white rounded-[24px] p-4 shadow-2xs">
+                <label htmlFor="lb-start" className="block text-[11px] font-semibold text-zinc-400">Jam Mulai & Selesai</label>
+                <div className="mt-1 flex items-center justify-between gap-1 text-[#111827]">
+                  <input id="lb-start" type="time" required value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full border-0 p-0 text-sm font-bold text-[#111827] focus:ring-0 bg-transparent cursor-pointer" />
+                  <span className="text-zinc-300 font-bold px-0.5 text-xs">–</span>
+                  <input id="lb-end" type="time" required value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full border-0 p-0 text-sm font-bold text-[#111827] focus:ring-0 bg-transparent cursor-pointer" aria-label="Jam selesai" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[26px] p-4 space-y-3 shadow-2xs">
+              <div>
+                <label htmlFor="lb-title" className="block text-xs font-semibold text-[#111827]">Judul Kegiatan Harian</label>
+                <input id="lb-title" type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Contoh: Pengerjaan Sistem HR & Rekap Data Harian" className="mt-1.5 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-sm text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]" />
+              </div>
+              <div>
+                <label htmlFor="lb-loc" className="block text-xs font-semibold text-[#111827]">Lokasi Kegiatan</label>
+                <select id="lb-loc" value={workLocation} onChange={(e) => setWorkLocation(e.target.value as 'kantor' | 'lapangan')} className="mt-1.5 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs font-semibold text-[#111827] focus:ring-2 focus:ring-[#0B6E6C]">
+                  <option value="kantor">Kantor</option>
+                  <option value="lapangan">Lapangan</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Deskripsi: section gradasi */}
+            <section className="bg-kinra-grid rounded-[28px] p-5 space-y-3 shadow-xs text-white">
+              <label htmlFor="lb-desc" className="text-xs font-bold text-white flex items-center gap-2">
+                <i className="fa-solid fa-pen-clip"></i>
+                <span>Deskripsi Kegiatan Harian</span>
+              </label>
+              <textarea id="lb-desc" rows={4} required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Tuliskan rincian kegiatan harian yang kamu kerjakan hari ini..." className="w-full rounded-[18px] bg-white border-0 p-3.5 text-xs text-[#111827] leading-relaxed focus:ring-2 focus:ring-[#FDE9B4]" />
+            </section>
+
+            <div className="bg-white rounded-[26px] p-4 space-y-3 shadow-2xs">
+              <div>
+                <label htmlFor="lb-out" className="block text-xs font-semibold text-[#111827]">Hasil / Output Kerja (Teks atau Link Dokumen / Drive)</label>
+                <input id="lb-out" type="text" value={output} onChange={(e) => setOutput(e.target.value)} placeholder="Contoh: https://docs.google.com/... atau Laporan Akhir Modul HR" className="mt-1.5 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827]" />
+              </div>
+              <div>
+                <label htmlFor="lb-obs" className="block text-xs font-semibold text-[#111827]">Kendala (Opsional)</label>
+                <input id="lb-obs" type="text" value={obstacles} onChange={(e) => setObstacles(e.target.value)} placeholder="Contoh: Penyesuaian format data laporan" className="mt-1.5 w-full rounded-[14px] bg-[#F4F7F6] border-0 px-3.5 py-2.5 text-xs text-[#111827]" />
+              </div>
+
+              {log && attachments.length > 0 && (
+                <div>
+                  <span className="block text-xs font-semibold text-[#111827] mb-2">Bukti tersimpan</span>
+                  <AttachmentGallery items={attachments} />
+                  <ul className="kc-manage-list mt-2">
+                    {attachments.map((att, i) => (
+                      <li key={att.id}>
+                        <span className="kc-small">Bukti #{i + 1}</span>
+                        <button type="button" className="kc-btn kc-btn-danger" onClick={() => handleRemoveAttachment(att)}>
+                          <i className="fa-solid fa-trash-can" aria-hidden="true"></i> Hapus
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <AttachmentUploader files={files} onChange={setFiles} existingCount={attachments.length} disabled={saving} />
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              {log ? (
+                <button type="button" onClick={handleDelete} disabled={saving} className="bg-[#FCE1D4] text-[#9A3412] text-xs font-bold px-3.5 py-2 rounded-full flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+                  <i className="fa-solid fa-trash-can text-[11px]"></i>
+                  <span>Hapus</span>
+                </button>
+              ) : (
+                <span />
+              )}
+              <button type="button" onClick={onClose} className="bg-white border border-zinc-200 text-[#111827] text-xs font-bold px-4 py-2 rounded-full shadow-2xs cursor-pointer">
+                Batal
+              </button>
+            </div>
+
+            <button type="submit" disabled={saving} className="w-full bg-[#0B6E6C] hover:bg-[#085856] text-white text-sm font-bold py-4 rounded-full shadow-md transition active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer">
+              <i className="fa-solid fa-floppy-disk"></i>
+              <span>{saving ? 'Menyimpan...' : log ? 'Kirim Ulang ke Mentor' : 'Kirim Logbook ke Mentor'}</span>
+            </button>
+          </form>
+        )}
+    </>
+  );
+
+  if (inline) {
+    return <section className="space-y-3" aria-labelledby="lb-modal-title">{body}</section>;
+  }
+
+  return (
+    <div className="kc-modal-backdrop" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="kc-modal kc-modal-wide" role="dialog" aria-modal="true" aria-labelledby="lb-modal-title">
+        {body}
+      </div>
+    </div>
+  );
+}
+
+function ReadRow({ label, value, multiline }: { label: string; value?: string | null; multiline?: boolean }) {
+  return (
+    <div className="kc-readrow">
+      <span className="kc-label">{label}</span>
+      <p className={multiline ? 'kc-readrow-multi' : undefined}>{value || '–'}</p>
+    </div>
+  );
+}

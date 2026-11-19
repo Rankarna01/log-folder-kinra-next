@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
 
         {/* Mobile Bottom Bar (FloatingDock) */}
-        <FloatingDock hasTodayLog={hasTodayLog} userRole={role} />
+        <FloatingDock userRole={role} />
       </div>
     </div>
   );

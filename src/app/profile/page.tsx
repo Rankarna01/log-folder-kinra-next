@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { DIVISIONS } from '@/components/onboarding/ProfileSetupForm';
+import { useDivisions } from '@/lib/divisions';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import type { Mentor, Profile, UserRole } from '@/types/database';
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
@@ -22,7 +22,9 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [mentors, setMentors] = useState<Mentor[]>([]);
   const [name, setName] = useState('');
-  const [division, setDivision] = useState<string>(DIVISIONS[0]);
+  const { divisions } = useDivisions();
+  const [divisionPick, setDivision] = useState<string>('');
+  const division = divisionPick || divisions[0] || '';
   const [position, setPosition] = useState('');
   const [mentorId, setMentorId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,7 +53,7 @@ export default function ProfilePage() {
         const p = data as Profile;
         setProfile(p);
         setName(p.name || '');
-        setDivision(p.division || DIVISIONS[0]);
+        setDivision(p.division || '');
         setPosition(p.position || '');
         setMentorId(p.mentor_id || '');
       }
@@ -173,7 +175,7 @@ export default function ProfilePage() {
         <div className="kc-field">
           <label htmlFor="pf-div">Divisi penempatan</label>
           <select id="pf-div" value={division} onChange={(e) => setDivision(e.target.value)}>
-            {DIVISIONS.map((d) => (
+            {divisions.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>

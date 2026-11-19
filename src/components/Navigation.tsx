@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { UserRole } from '@/types/database';
+import { useSidebarCollapsed, setSidebarCollapsed } from '@/lib/sidebar';
 
 export function Sidebar({
   userRole = 'participant',
@@ -12,10 +13,11 @@ export function Sidebar({
   onLogout?: () => void;
 }) {
   const pathname = usePathname();
+  const collapsed = useSidebarCollapsed();
+  const toggleCollapsed = () => setSidebarCollapsed(!collapsed);
 
   const isHome = pathname === '/dashboard' || pathname === '/';
-  const isCalendar = pathname.startsWith('/logbook') && pathname !== '/logbook/create';
-  const isCreate = pathname === '/logbook/create';
+  const isCalendar = pathname.startsWith('/logbook');
   const isReports = pathname.startsWith('/reports');
   const isProfile = pathname.startsWith('/profile');
 
@@ -29,11 +31,24 @@ export function Sidebar({
   const isAdminSettings = pathname === '/admin/settings';
 
   return (
-    <aside className="hidden md:flex flex-col w-64 lg:w-72 bg-[#008187] border-r border-white/10 sticky top-0 h-screen shrink-0 z-30">
+    <aside
+      className="kc-sidebar hidden md:flex flex-col bg-[#008187] border-r border-white/10 sticky top-0 h-screen shrink-0 z-30"
+      data-collapsed={collapsed ? 'true' : 'false'}
+    >
       {/* Blok brand Hijau Tosca (Panduan UI/UX: logo 168px di pojok kiri atas) */}
-      <div className="bg-[#008187] px-6 py-5 shrink-0">
+      <div className="kc-brand bg-[#008187] px-6 py-5 shrink-0 flex items-center justify-between gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/logo/kinra-logo-tosca.png" alt="KINRA Sei Mangkei" width={168} height={66} className="w-[168px] h-auto" />
+        <img src="/images/logo/kinra-logo-tosca.png" alt="KINRA Sei Mangkei" width={168} height={66} className="kc-brand-logo w-[168px] h-auto" />
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className="kc-sidebar-toggle"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Perlebar sidebar' : 'Ciutkan sidebar'}
+          title={collapsed ? 'Perlebar sidebar' : 'Ciutkan sidebar'}
+        >
+          <i className={`fa-solid ${collapsed ? 'fa-angles-right' : 'fa-angles-left'}`} aria-hidden="true"></i>
+        </button>
       </div>
 
       <div className="flex-1 min-h-0 space-y-6 overflow-y-auto no-scrollbar p-5">
@@ -69,18 +84,6 @@ export function Sidebar({
             >
               <i className="fa-regular fa-calendar-days text-sm w-4 text-center"></i>
               <span>Kalender Logbook</span>
-            </Link>
-
-            <Link
-              href="/logbook/create"
-              className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
-                isCreate
-                  ? 'bg-white text-[#008187] shadow-xs'
-                  : 'text-white/85 hover:bg-white/15 hover:text-white'
-              }`}
-            >
-              <i className="fa-solid fa-plus-circle text-sm w-4 text-center"></i>
-              <span>Tambah Logbook</span>
             </Link>
 
             <Link
@@ -193,6 +196,18 @@ export function Sidebar({
               >
                 <i className="fa-solid fa-chalkboard-user text-sm w-4 text-center"></i>
                 <span>Data Mentor</span>
+              </Link>
+
+              <Link
+                href="/admin/divisions"
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
+                  pathname === '/admin/divisions'
+                    ? 'bg-white text-[#008187] shadow-xs'
+                    : 'text-white/85 hover:bg-white/15 hover:text-white'
+                }`}
+              >
+                <i className="fa-solid fa-sitemap text-sm w-4 text-center"></i>
+                <span>Master Divisi</span>
               </Link>
 
               <Link
@@ -312,16 +327,14 @@ export function TopBar({
 }
 
 export function FloatingDock({
-  hasTodayLog = false,
   userRole = 'participant',
 }: {
-  hasTodayLog?: boolean;
   userRole?: UserRole;
 }) {
   const pathname = usePathname();
 
   const isHome = pathname === '/dashboard' || pathname === '/';
-  const isCalendar = pathname.startsWith('/logbook') && pathname !== '/logbook/create';
+  const isCalendar = pathname.startsWith('/logbook');
   const isReports = pathname.startsWith('/reports');
   const isProfile = pathname.startsWith('/profile');
   const isMentor = pathname === '/mentor';
@@ -446,20 +459,6 @@ export function FloatingDock({
           </Link>
         </div>
 
-        {/* Floating Action Button (Create Logbook) — hanya peserta */}
-        {userRole === 'participant' && (
-        <Link
-          href="/logbook/create"
-          aria-label={hasTodayLog ? 'Edit Logbook Hari Ini' : 'Tambah Logbook'}
-          className="w-11 h-11 rounded-[18px] bg-[#18181B] text-white hover:bg-[#0B6E6C] transition flex items-center justify-center shadow-md shrink-0 ml-1"
-        >
-          {hasTodayLog ? (
-            <i className="fa-solid fa-pen-to-square text-xs text-[#FDE9B4]"></i>
-          ) : (
-            <i className="fa-solid fa-plus text-sm"></i>
-          )}
-        </Link>
-        )}
       </div>
     </nav>
   );

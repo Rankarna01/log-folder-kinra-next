@@ -133,7 +133,7 @@ export default function MentorInternsPage() {
       if (filter === 'pending' && s.pending === 0) return false;
       if (filter === 'done' && (s.total === 0 || s.pending > 0)) return false;
       if (!q) return true;
-      return [p.name, p.email, p.division, p.institution, p.nim_nik].some((v) => norm(v).includes(q));
+      return [p.name, p.email, p.division, p.institution].some((v) => norm(v).includes(q));
     });
   }, [interns, stats, mine, scope, filter, query]);
 
@@ -285,7 +285,6 @@ export default function MentorInternsPage() {
                   </li>
                   <li>
                     <i className="fa-solid fa-id-card" aria-hidden="true"></i>
-                    <span className="mono">{p.nim_nik || '–'}</span>
                   </li>
                   <li>
                     <i className="fa-regular fa-calendar" aria-hidden="true"></i>

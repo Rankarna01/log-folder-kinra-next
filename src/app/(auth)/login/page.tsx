@@ -1,23 +1,45 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { homeForRole, roleFromEmail } from '@/lib/auth/roles';
+import { MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
 import { AuthShell, AuthField } from '@/components/AuthShell';
+
+const EMAIL_KEY = 'kinra_last_email';
+
+// Email terakhir yang berhasil masuk disimpan di perangkat ini (bukan kata sandi).
+const emailListeners = new Set<() => void>();
+const subscribeEmail = (cb: () => void) => {
+  emailListeners.add(cb);
+  return () => {
+    emailListeners.delete(cb);
+  };
+};
+const readEmail = () => {
+  try {
+    return localStorage.getItem(EMAIL_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+const writeEmail = (value: string) => {
+  try {
+    localStorage.setItem(EMAIL_KEY, value);
+  } catch {
+    /* penyimpanan diblokir: hanya untuk sesi ini */
+  }
+  emailListeners.forEach((l) => l());
+};
+
+type Step = 'email' | 'password' | 'create';
 
 function translateError(message: string): string {
   const m = message.toLowerCase();
-  if (m.includes('invalid login credentials')) {
-    return 'Email atau kata sandi salah. Periksa kembali, atau daftar bila belum punya akun.';
-  }
-  if (m.includes('email not confirmed')) {
-    return 'Email belum diverifikasi. Buka tautan konfirmasi di inbox atau folder spam Anda.';
-  }
-  if (m.includes('failed to fetch') || m.includes('network')) {
-    return 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
-  }
+  if (m.includes('invalid login credentials')) return 'Kata sandi salah. Periksa kembali kata sandi Anda.';
+  if (m.includes('email not confirmed')) return 'Akun belum diaktifkan. Hubungi admin KINRA.';
+  if (m.includes('failed to fetch') || m.includes('network')) return 'Tidak dapat terhubung ke server. Periksa koneksi Anda.';
   return message || 'Gagal masuk. Silakan coba lagi.';
 }
 
@@ -25,37 +47,112 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [email, setEmail] = useState('');
+  const savedEmail = useSyncExternalStore(subscribeEmail, readEmail, () => '');
+  const [emailInput, setEmailInput] = useState<string | null>(null);
+  const email = emailInput ?? savedEmail;
+
+  const [step, setStep] = useState<Step>('email');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMsg('');
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+  // Tautan dari email membawa sesi di URL. Langsung arahkan sesuai role.
+  useEffect(() => {
+    // Hanya untuk tautan dari email. Sesi lama di browser tidak boleh melewati form login.
+    if (!window.location.hash.includes('access_token')) return;
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!session?.user || (event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION')) return;
+      const { data: prof } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+      router.replace(homeForRole(prof?.role ?? roleFromEmail(session.user.email)));
+      router.refresh();
     });
+    return () => sub.subscription.unsubscribe();
+  }, [router, supabase]);
 
+  const finishLogin = async (cleanEmail: string, pass: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: pass });
     if (error || !data.user) {
       setErrorMsg(translateError(error?.message ?? ''));
       setLoading(false);
       return;
     }
-
-    // Arahkan sesuai role: admin -> /admin, mentor -> /mentor, peserta -> /dashboard
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
-    const role = prof?.role ?? roleFromEmail(data.user.email);
-    router.replace(homeForRole(role));
+    writeEmail(cleanEmail);
+    const { data: prof } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+    router.replace(homeForRole(prof?.role ?? roleFromEmail(data.user.email)));
     router.refresh();
+  };
+
+  // Langkah 1: cek email
+  const handleEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+
+    const res = await fetch('/api/auth/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { state?: string; error?: string };
+    setLoading(false);
+
+    if (!res.ok) {
+      setErrorMsg(json.error || 'Gagal memeriksa email.');
+      return;
+    }
+    if (json.state === 'not_found') {
+      setErrorMsg('Email ini belum didaftarkan admin. Hubungi admin KINRA.');
+      return;
+    }
+    setPassword('');
+    setConfirm('');
+    setStep(json.state === 'pending' ? 'create' : 'password');
+  };
+
+  // Langkah 2a: masuk dengan kata sandi
+  const handlePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setLoading(true);
+    await finishLogin(email.trim().toLowerCase(), password);
+  };
+
+  // Langkah 2b: aktivasi pertama kali (kata sandi dua kali), lalu masuk
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setErrorMsg(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
+      return;
+    }
+    if (password !== confirm) {
+      setErrorMsg('Konfirmasi kata sandi tidak sama. Ketik ulang dengan benar.');
+      return;
+    }
+    setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+
+    const res = await fetch('/api/auth/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setErrorMsg(json.error || 'Aktivasi gagal. Coba lagi.');
+      setLoading(false);
+      return;
+    }
+    await finishLogin(cleanEmail, password);
+  };
+
+  const backToEmail = () => {
+    setStep('email');
+    setErrorMsg('');
+    setPassword('');
+    setConfirm('');
   };
 
   return (
@@ -65,9 +162,15 @@ export default function LoginPage() {
       brandText="Catat kegiatan, ajukan ke mentor, dan pantau persetujuan dalam satu tempat."
     >
       <p className="eyebrow auth-eyebrow">Masuk</p>
-      <h1 className="auth-title">Masuk ke akun Anda</h1>
+      <h1 className="auth-title">
+        {step === 'email' && 'Masuk ke akun Anda'}
+        {step === 'password' && 'Masukkan kata sandi'}
+        {step === 'create' && 'Buat kata sandi Anda'}
+      </h1>
       <p className="auth-lead">
-        Peserta magang, mentor, dan admin masuk lewat halaman yang sama. Anda akan diarahkan sesuai peran.
+        {step === 'email' && 'Masukkan email yang didaftarkan admin. Mentor dan peserta masuk lewat halaman yang sama.'}
+        {step === 'password' && `Masuk sebagai ${email.trim().toLowerCase()}.`}
+        {step === 'create' && 'Pertama kali masuk. Buat kata sandi, lalu ulangi sekali lagi untuk memastikan.'}
       </p>
 
       {errorMsg && (
@@ -77,36 +180,42 @@ export default function LoginPage() {
         </div>
       )}
 
-      <form onSubmit={handleLogin} className="auth-form">
-        <AuthField
-          id="email"
-          label="Email"
-          type="email"
-          icon="fa-envelope"
-          value={email}
-          onChange={setEmail}
-          placeholder="nama@email.com"
-          autoComplete="email"
-        />
-        <AuthField
-          id="password"
-          label="Kata sandi"
-          type="password"
-          icon="fa-lock"
-          value={password}
-          onChange={setPassword}
-          placeholder="Masukkan kata sandi"
-          autoComplete="current-password"
-        />
+      {step === 'email' && (
+        <form onSubmit={handleEmail} className="auth-form">
+          <AuthField id="email" label="Email" type="email" icon="fa-envelope" value={email} onChange={setEmailInput} placeholder="nama@email.com" autoComplete="username" />
+          <button type="submit" disabled={loading} className="btn-masuk">
+            {loading ? 'Memeriksa…' : 'Lanjut'}
+          </button>
+        </form>
+      )}
 
-        <button type="submit" disabled={loading} className="btn-masuk">
-          {loading ? 'Memproses...' : 'Masuk'}
-        </button>
-      </form>
+      {step === 'password' && (
+        <form onSubmit={handlePassword} className="auth-form">
+          <input type="email" name="username" value={email.trim().toLowerCase()} autoComplete="username" readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
+          <AuthField id="password" label="Kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder="Masukkan kata sandi" autoComplete="current-password" />
+          <button type="submit" disabled={loading} className="btn-masuk">
+            {loading ? 'Memproses…' : 'Masuk'}
+          </button>
+          <button type="button" className="auth-link-btn" onClick={backToEmail}>
+            Ganti email
+          </button>
+        </form>
+      )}
 
-      <p className="auth-switch">
-        Belum punya akun? <Link href="/register">Daftar sebagai peserta</Link>
-      </p>
+      {step === 'create' && (
+        <form onSubmit={handleCreate} className="auth-form">
+          <input type="email" name="username" value={email.trim().toLowerCase()} autoComplete="username" readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
+          <AuthField id="new-password" label="Buat kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder={`Minimal ${MIN_PASSWORD_LENGTH} karakter`} autoComplete="new-password" />
+          <AuthField id="confirm-password" label="Ulangi kata sandi" type="password" icon="fa-shield-halved" value={confirm} onChange={setConfirm} placeholder="Ketik ulang kata sandi" autoComplete="new-password" />
+          <button type="submit" disabled={loading} className="btn-masuk">
+            {loading ? 'Menyimpan…' : 'Simpan dan masuk'}
+          </button>
+          <button type="button" className="auth-link-btn" onClick={backToEmail}>
+            Ganti email
+          </button>
+        </form>
+      )}
+
       <p className="auth-foot">PT Kawasan Industri Nusantara · KEK Sei Mangkei</p>
     </AuthShell>
   );

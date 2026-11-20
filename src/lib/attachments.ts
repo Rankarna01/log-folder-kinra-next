@@ -2,10 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Attachment } from '@/types/database';
 
 export const BUCKET = 'logbook-photos';
-export const MAX_FILE_MB = 5;
-export const MAX_FILES = 6;
-export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-export const ACCEPT_ATTR = ACCEPTED_TYPES.join(',');
+export const MAX_FILE_MB = 20;
+export const MAX_FILES = 10;
 
 /** Validasi berkas sebelum diunggah. Mengembalikan pesan error, atau null bila lolos. */
 export function validateFiles(files: File[], alreadyCount = 0): string | null {
@@ -13,9 +11,6 @@ export function validateFiles(files: File[], alreadyCount = 0): string | null {
     return `Maksimal ${MAX_FILES} lampiran per logbook.`;
   }
   for (const f of files) {
-    if (!ACCEPTED_TYPES.includes(f.type)) {
-      return `"${f.name}" tidak didukung. Gunakan JPG, PNG, WEBP, atau PDF.`;
-    }
     if (f.size > MAX_FILE_MB * 1024 * 1024) {
       return `"${f.name}" melebihi ${MAX_FILE_MB} MB.`;
     }

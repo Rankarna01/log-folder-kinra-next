@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { Logbook } from '@/types/database';
 import { AttachmentGallery } from '@/components/attachments/AttachmentGallery';
-import { useFeedback } from '@/components/feedback/FeedbackProvider';
 
 const STATUS_CHIP = {
   approved: { label: 'Disetujui', icon: 'fa-circle-check', cls: 'bg-white text-[#0B6E6C]' },
@@ -17,7 +16,6 @@ const STATUS_CHIP = {
 export default function LogbookDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const supabase = createClient();
-  const { say } = useFeedback();
 
   const [logbook, setLogbook] = useState<Logbook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,17 +52,6 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
 
   const status = STATUS_CHIP[logbook.status] ?? STATUS_CHIP.submitted;
   const bukti = logbook.attachments ?? [];
-
-  const readAloud = () => {
-    const parts = [
-      `Rincian logbook. ${logbook.title}.`,
-      `Tanggal ${logbook.date}, pukul ${logbook.start_time.slice(0, 5)} sampai ${logbook.end_time.slice(0, 5)}.`,
-      `Deskripsi. ${logbook.final_description}.`,
-    ];
-    if (logbook.output) parts.push(`Hasil. ${logbook.output}.`);
-    if (logbook.obstacles) parts.push(`Kendala. ${logbook.obstacles}.`);
-    say(parts.join(' '), { force: true });
-  };
 
   return (
     <div className="flex-1 px-5 pt-4 pb-8 space-y-4">
@@ -105,11 +92,6 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         <h2 className="text-[19px] font-bold text-white leading-snug">{logbook.title}</h2>
-
-        <button type="button" onClick={readAloud} className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full transition">
-          <i className="fa-solid fa-volume-high" aria-hidden="true"></i>
-          Bacakan rincian
-        </button>
       </section>
 
       {logbook.status === 'rejected' && logbook.review_notes && (

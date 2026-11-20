@@ -13,7 +13,6 @@ export function ProfileSetupForm({ onDone }: { onDone: () => void }) {
   const { toast } = useToast();
 
   const [name, setName] = useState('');
-  const [nimNik, setNimNik] = useState('');
   const { divisions } = useDivisions();
   const [divisionPick, setDivision] = useState('');
   const division = divisionPick || divisions[0] || '';
@@ -79,7 +78,6 @@ export function ProfileSetupForm({ onDone }: { onDone: () => void }) {
       position: position.trim() || 'Peserta Magang KINRA',
       mentor_id: chosen.id,
       mentor_name: chosen.name,
-      nim_nik: nimNik.trim() || null,
       institution: 'PT Kawasan Industri Nusantara (KINRA Sei Mangkei)',
       updated_at: new Date().toISOString(),
     });
@@ -106,11 +104,6 @@ export function ProfileSetupForm({ onDone }: { onDone: () => void }) {
       <div className="kc-field">
         <label htmlFor="ps-name">Nama lengkap <span className="kc-req">*</span></label>
         <input id="ps-name" type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Contoh: Muhammad Randy Karna" autoComplete="name" />
-      </div>
-
-      <div className="kc-field">
-        <label htmlFor="ps-nim">NIM / NIK / No. induk</label>
-        <input id="ps-nim" type="text" value={nimNik} onChange={(e) => setNimNik(e.target.value)} placeholder="Contoh: 210103045" />
       </div>
 
       <div className="kc-field">

@@ -33,7 +33,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isAuthPage = path.startsWith('/login') || path.startsWith('/register');
+  const isAuthPage = path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/aktivasi');
   const isAdminArea = path === '/admin' || path.startsWith('/admin/');
   const isMentorArea = path === '/mentor' || path.startsWith('/mentor/');
   // Halaman khusus peserta magang
@@ -42,14 +42,15 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Route API memeriksa sesinya sendiri dan membalas JSON, bukan redirect.
-  if (!user && !isAuthPage && path !== '/' && !path.startsWith('/api/')) {
+  // /set-password dibuka dari tautan undangan; sesinya dibaca di halaman itu.
+  if (!user && !isAuthPage && path !== '/' && !path.startsWith('/api/') && path !== '/set-password') {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
   // Role hanya dicari bila memang dibutuhkan untuk keputusan redirect.
-  if (user && (isAuthPage || isAdminArea || isMentorArea || isParticipantArea)) {
+  if (user && (isAdminArea || isMentorArea || isParticipantArea)) {
     const { data: prof } = await supabase
       .from('profiles')
       .select('role')
@@ -68,7 +69,6 @@ export async function updateSession(request: NextRequest) {
       return res;
     };
 
-    if (isAuthPage) return redirectTo(home);
     if (isAdminArea && role !== 'admin') return redirectTo(home);
     if (isParticipantArea && role !== 'participant') return redirectTo(home);
     if (isMentorArea && role !== 'mentor') return redirectTo(home);

@@ -16,6 +16,14 @@ type Props = {
   inline?: boolean;
 };
 
+const todayIso = () => {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+};
+
+const fmtDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 const dayLabel = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number);
   const names = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -98,6 +106,10 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (locked) return;
+    if (date > todayIso()) {
+      toast.warning('Logbook hanya bisa diisi untuk hari ini atau tanggal sebelumnya.', 'Tanggal belum bisa diisi');
+      return;
+    }
     const limitErr = validateFiles(files, attachments.length);
     if (limitErr) {
       toast.warning(limitErr, 'Lampiran terlalu banyak');
@@ -202,24 +214,62 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
         {loading ? (
           <div className="kc-skeleton" aria-busy="true" style={{ height: 240 }} />
         ) : locked ? (
-          <div className="kc-form">
-            <div className="kc-note">
-              <i className="fa-solid fa-lock" aria-hidden="true"></i>
-              <span>
-                Sudah diverifikasi{log?.reviewed_by ? ` oleh ${log.reviewed_by}` : ' mentor'}. Logbook ini tidak bisa diubah lagi.
+          <div className="lb-view">
+            <div className="lb-view-banner">
+              <span className="lb-view-lock" aria-hidden="true">
+                <i className="fa-solid fa-lock"></i>
               </span>
+              <div>
+                <p className="lb-view-title">Terverifikasi mentor</p>
+                <p className="lb-view-sub">
+                  {log?.reviewed_by ? `Disetujui oleh ${log.reviewed_by}` : 'Disetujui oleh mentor'}
+                  {log?.reviewed_at ? ` · ${fmtDateTime(log.reviewed_at)}` : ''}
+                </p>
+              </div>
             </div>
-            <ReadRow label="Judul" value={log?.title} />
-            <ReadRow label="Waktu" value={`${log?.start_time.slice(0, 5)} – ${log?.end_time.slice(0, 5)}`} />
-            <ReadRow label="Lokasi" value={log?.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'} />
-            <ReadRow label="Deskripsi" value={log?.final_description} multiline />
-            {log?.output && <ReadRow label="Hasil / output" value={log.output} />}
-            {log?.obstacles && <ReadRow label="Kendala" value={log.obstacles} />}
-            <div className="kc-field">
-              <span className="kc-label">Bukti dokumentasi</span>
+
+            <div className="lb-view-grid">
+              <InfoTile icon="fa-regular fa-clock" label="Waktu" value={`${log?.start_time.slice(0, 5)} – ${log?.end_time.slice(0, 5)}`} />
+              <InfoTile icon="fa-solid fa-location-dot" label="Lokasi" value={log?.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'} />
+              <InfoTile icon="fa-regular fa-calendar" label="Tanggal" value={dayLabel(date)} />
+              <InfoTile icon="fa-solid fa-heading" label="Judul" value={log?.title} wide />
+            </div>
+
+            <section className="lb-view-block">
+              <p className="lb-view-label">Deskripsi pekerjaan</p>
+              <p className="lb-view-text">{log?.final_description || '–'}</p>
+            </section>
+
+            {log?.output && (
+              <section className="lb-view-block">
+                <p className="lb-view-label">Hasil / output</p>
+                {/^(https?:\/\/|www\.)/i.test(log.output.trim()) ? (
+                  <a className="lb-view-link" href={log.output.trim().startsWith('http') ? log.output.trim() : `https://${log.output.trim()}`} target="_blank" rel="noopener noreferrer">
+                    <i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                    <span>{log.output}</span>
+                  </a>
+                ) : (
+                  <p className="lb-view-text">{log.output}</p>
+                )}
+              </section>
+            )}
+
+            {log?.obstacles && (
+              <section className="lb-view-block">
+                <p className="lb-view-label">Kendala</p>
+                <p className="lb-view-text">{log.obstacles}</p>
+              </section>
+            )}
+
+            <section className="lb-view-block">
+              <div className="lb-view-head">
+                <p className="lb-view-label">Bukti dokumentasi</p>
+                <span className="lb-view-count">{attachments.length} berkas</span>
+              </div>
               <AttachmentGallery items={attachments} emptyText="Tidak ada bukti dilampirkan." />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            </section>
+
+            <div className="lb-view-foot">
               <button type="button" className="kc-btn" onClick={onClose}>Tutup</button>
             </div>
           </div>
@@ -331,6 +381,20 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
     <div className="kc-modal-backdrop" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="kc-modal kc-modal-wide" role="dialog" aria-modal="true" aria-labelledby="lb-modal-title">
         {body}
+      </div>
+    </div>
+  );
+}
+
+function InfoTile({ icon, label, value, wide }: { icon: string; label: string; value?: string | null; wide?: boolean }) {
+  return (
+    <div className={`lb-view-tile${wide ? ' lb-view-tile-wide' : ''}`}>
+      <span className="lb-view-tile-icon" aria-hidden="true">
+        <i className={icon}></i>
+      </span>
+      <div>
+        <p className="lb-view-tile-label">{label}</p>
+        <p className="lb-view-tile-value">{value || '–'}</p>
       </div>
     </div>
   );

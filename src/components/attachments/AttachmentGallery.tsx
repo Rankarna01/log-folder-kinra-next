@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import type { Attachment } from '@/types/database';
-import { fileNameOf, isImage } from '@/lib/attachments';
+import { fileNameOf, isImage, isPdf } from '@/lib/attachments';
+
+const extOf = (path: string) => {
+  const name = fileNameOf(path);
+  const dot = name.lastIndexOf('.');
+  return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toUpperCase() : 'FILE';
+};
 
 type Props = {
   items: Attachment[];
@@ -52,8 +58,8 @@ export function AttachmentGallery({ items, emptyText = 'Belum ada bukti dokument
                 <img src={att.file_url} alt="" loading="lazy" />
               ) : (
                 <span className="kc-bukti-pdf">
-                  <i className="fa-solid fa-file-pdf" aria-hidden="true"></i>
-                  PDF
+                  <i className={`fa-solid ${isPdf(att.mime_type) ? 'fa-file-pdf' : 'fa-file-lines'}`} aria-hidden="true"></i>
+                  {extOf(att.file_path)}
                 </span>
               )}
               <span className="kc-bukti-num tnum">#{i + 1}</span>
@@ -89,8 +95,18 @@ export function AttachmentGallery({ items, emptyText = 'Belum ada bukti dokument
             {isImage(current.mime_type) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={current.file_url} alt={current.caption || `Bukti ${open + 1}`} />
-            ) : (
+            ) : isPdf(current.mime_type) ? (
               <iframe src={current.file_url} title={`Bukti ${open + 1}`} />
+            ) : (
+              <div className="kc-bukti-file">
+                <i className="fa-solid fa-file-lines" aria-hidden="true"></i>
+                <b>{fileNameOf(current.file_path)}</b>
+                <span>{extOf(current.file_path)} · pratinjau tidak tersedia, silakan unduh</span>
+                <a className="kc-lb-btn" href={current.file_url} download>
+                  <i className="fa-solid fa-download" aria-hidden="true"></i>
+                  <span>Unduh berkas</span>
+                </a>
+              </div>
             )}
 
             {count > 1 && (

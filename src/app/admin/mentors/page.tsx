@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { useDivisions } from '@/lib/divisions';
 import { useToast } from '@/components/feedback/FeedbackProvider';
-import type { Mentor } from '@/types/database';
-import { PageHead, StatTiles, StatTile, Skeleton, EmptyState } from '@/components/ui/Kit';
-import { generatePassword, MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
+import { useDivisions } from '@/lib/divisions';
+import { PageHead, StatTiles, StatTile, Chip, Skeleton, EmptyState } from '@/components/ui/Kit';
+import type { Mentor, Profile } from '@/types/database';
+import { MentorDetailModal } from '@/components/admin/MentorDetailModal';
 
 type Draft = {
   id?: string;
@@ -17,8 +17,7 @@ type Draft = {
   email: string;
   phone: string;
   is_active: boolean;
-  account: boolean;
-  password: string;
+  invite: boolean;
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -28,20 +27,28 @@ const EMPTY_DRAFT: Draft = {
   email: '',
   phone: '',
   is_active: true,
-  account: true,
-  password: '',
+  invite: true,
 };
 
-type Issued = { email: string; password: string; created: boolean; name: string };
-
 const norm = (s?: string | null) => (s || '').trim().toLowerCase();
+
+async function postAccount(body: Record<string, unknown>) {
+  const res = await fetch('/api/admin/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string; status?: string };
+  if (!res.ok) throw new Error(json.error || 'Permintaan gagal.');
+  return json;
+}
 
 export default function AdminMentorsPage() {
   const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
-
   const { divisions } = useDivisions();
+
   const [loading, setLoading] = useState(true);
   const [mentors, setMentors] = useState<Mentor[]>([]);
   const [pesertaByMentor, setPesertaByMentor] = useState<Record<string, number>>({});
@@ -50,41 +57,41 @@ export default function AdminMentorsPage() {
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
-  const [resetFor, setResetFor] = useState<Mentor | null>(null);
-  const [resetPassword, setResetPassword] = useState('');
-  const [issued, setIssued] = useState<Issued | null>(null);
-  const [copied, setCopied] = useState(false);
-
   const [reloadKey, setReloadKey] = useState(0);
+  const [people, setPeople] = useState<Profile[]>([]);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
     async function load() {
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) {
-      router.push('/login');
-      return;
-    }
-
-    const [{ data: rows, error }, { data: people }] = await Promise.all([
-      supabase.from('mentors').select('*').order('name'),
-      supabase.from('profiles').select('mentor_id').eq('role', 'participant'),
-    ]);
-
-    if (error) toast.error(error.message, 'Data mentor gagal dimuat');
-    setMentors((rows as Mentor[]) || []);
-
-    const counts: Record<string, number> = {};
-    (people || []).forEach((p: { mentor_id: string | null }) => {
-      if (p.mentor_id) counts[p.mentor_id] = (counts[p.mentor_id] || 0) + 1;
-    });
-    setPesertaByMentor(counts);
-    setLoading(false);
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) {
+        router.push('/login');
+        return;
+      }
+      const [{ data: rows, error }, { data: people }] = await Promise.all([
+        supabase.from('mentors').select('*').order('name'),
+        supabase.from('profiles').select('id,name,email,division,position,mentor_id,mentor_name').eq('role', 'participant').order('name'),
+      ]);
+      if (!active) return;
+      if (error) toast.error(error.message, 'Data mentor gagal dimuat');
+      setMentors((rows as Mentor[]) || []);
+      const counts: Record<string, number> = {};
+      (people || []).forEach((p: { mentor_id: string | null }) => {
+        if (p.mentor_id) counts[p.mentor_id] = (counts[p.mentor_id] || 0) + 1;
+      });
+      setPesertaByMentor(counts);
+      setPeople((people as Profile[]) || []);
+      setLoading(false);
     }
     load();
-  }, [router, supabase, toast, reloadKey]);
+    return () => {
+      active = false;
+    };
+    // toast stabil dari provider; reloadKey memicu muat ulang
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, supabase, reloadKey]);
 
-
-  // Nama yang sama muncul lebih dari sekali: ditandai agar admin bisa merapikan data.
   const dupNames = useMemo(() => {
     const count = new Map<string, number>();
     mentors.forEach((m) => count.set(norm(m.name), (count.get(norm(m.name)) || 0) + 1));
@@ -111,7 +118,7 @@ export default function AdminMentorsPage() {
     [mentors, pesertaByMentor, dupNames]
   );
 
-  const openNew = () => setDraft({ ...EMPTY_DRAFT, password: generatePassword() });
+  const openNew = () => setDraft({ ...EMPTY_DRAFT, division: divisions[0] || '' });
   const openEdit = (m: Mentor) =>
     setDraft({
       id: m.id,
@@ -121,20 +128,8 @@ export default function AdminMentorsPage() {
       email: m.email || '',
       phone: m.phone || '',
       is_active: m.is_active,
-      account: false,
-      password: generatePassword(),
+      invite: false,
     });
-
-  const callAccountApi = async (mentorId: string, password: string) => {
-    const res = await fetch('/api/admin/mentor-account', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mentorId, password }),
-    });
-    const json = (await res.json().catch(() => ({}))) as { error?: string; created?: boolean; email?: string };
-    if (!res.ok) throw new Error(json.error || 'Akun mentor gagal disiapkan.');
-    return json;
-  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,7 +140,7 @@ export default function AdminMentorsPage() {
       name: draft.name.trim(),
       division: draft.division || divisions[0] || '',
       position: draft.position.trim(),
-      email: draft.email.trim() || null,
+      email: draft.email.trim().toLowerCase() || null,
       phone: draft.phone.trim() || null,
       is_active: draft.is_active,
     };
@@ -168,24 +163,30 @@ export default function AdminMentorsPage() {
       mentorId = data.id;
     }
 
-    if (draft.account) {
+    if (draft.invite) {
       if (!payload.email) {
         setSaving(false);
-        toast.warning('Mentor tersimpan, tetapi akun login belum dibuat karena email kosong.', 'Akun belum dibuat');
-        setDraft(null);
-        setReloadKey((k) => k + 1);
-        return;
-      }
-      if (draft.password.length < MIN_PASSWORD_LENGTH) {
-        setSaving(false);
-        toast.warning(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
+        toast.warning('Isi email mentor agar akun login bisa dibuat.', 'Akun belum dibuat');
         return;
       }
       try {
-        const res = await callAccountApi(mentorId!, draft.password);
-        setIssued({ email: res.email!, password: draft.password, created: !!res.created, name: payload.name });
+        const res = await postAccount({
+          action: 'create',
+          kind: 'mentor',
+          name: payload.name,
+          email: payload.email,
+          division: payload.division,
+          position: payload.position,
+          phone: payload.phone,
+          mentorId,
+        });
+        if (res.status === 'exists') {
+          toast.info(`${payload.name} sudah punya akun. Data profilnya diperbarui.`);
+        } else {
+          toast.success(`${payload.name} terdaftar. Mentor mengaktifkan akun di halaman Aktivasi.`, 'Mentor ditambahkan');
+        }
       } catch (err) {
-        toast.error((err as Error).message, 'Akun login gagal dibuat');
+        toast.error((err as Error).message, 'Akun gagal dibuat');
       }
     } else {
       toast.success(draft.id ? `Data ${payload.name} diperbarui.` : `${payload.name} ditambahkan sebagai mentor.`);
@@ -194,36 +195,6 @@ export default function AdminMentorsPage() {
     setSaving(false);
     setDraft(null);
     setReloadKey((k) => k + 1);
-  };
-
-  const submitReset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetFor) return;
-    if (resetPassword.length < MIN_PASSWORD_LENGTH) {
-      toast.warning(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await callAccountApi(resetFor.id, resetPassword);
-      setIssued({ email: res.email!, password: resetPassword, created: !!res.created, name: resetFor.name });
-      setResetFor(null);
-      setReloadKey((k) => k + 1);
-    } catch (err) {
-      toast.error((err as Error).message, 'Reset kata sandi gagal');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const copyPassword = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      toast.warning('Salin manual dari kolom kata sandi.');
-    }
   };
 
   const toggleActive = async (m: Mentor) => {
@@ -239,10 +210,9 @@ export default function AdminMentorsPage() {
   const remove = async (m: Mentor) => {
     const n = pesertaByMentor[m.id] || 0;
     const msg = n > 0
-      ? `Hapus ${m.name}? ${n} peserta yang dibimbing akan kehilangan mentor dan harus memilih ulang. Tindakan ini tidak bisa dibatalkan.`
+      ? `Hapus ${m.name}? ${n} peserta yang dibimbing akan kehilangan mentor. Tindakan ini tidak bisa dibatalkan.`
       : `Hapus ${m.name}? Tindakan ini tidak bisa dibatalkan.`;
     if (!window.confirm(msg)) return;
-
     const { error } = await supabase.from('mentors').delete().eq('id', m.id);
     if (error) {
       toast.error(error.message, 'Mentor gagal dihapus');
@@ -252,20 +222,18 @@ export default function AdminMentorsPage() {
     setReloadKey((k) => k + 1);
   };
 
-  if (loading) {
-    return <Skeleton height={260} />;
-  }
+  if (loading) return <Skeleton height={260} />;
 
   return (
     <div className="kc-page">
       <PageHead
         eyebrow="Super admin · Data mentor"
         title={`${mentors.length} mentor terdaftar, ${totals.active} aktif`}
-        lead="Kelola mentor pembimbing yang dipilih peserta saat mendaftar. Jumlah peserta dihitung langsung dari profil."
+        lead="Daftarkan mentor dengan email. Mentor mengaktifkan akunnya sendiri lewat halaman Aktivasi."
         actions={
           <button type="button" className="kc-btn kc-btn-primary" onClick={openNew}>
-          <i className="fa-solid fa-plus" aria-hidden="true"></i> Tambah mentor
-        </button>
+            <i className="fa-solid fa-plus" aria-hidden="true"></i> Tambah mentor
+          </button>
         }
       />
 
@@ -280,12 +248,7 @@ export default function AdminMentorsPage() {
           <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama, posisi, email…" aria-label="Cari mentor" />
         </label>
-        <select
-          aria-label="Filter divisi"
-          value={division}
-          onChange={(e) => setDivision(e.target.value)}
-          className="kc-input-inline"
-        >
+        <select aria-label="Filter divisi" value={division} onChange={(e) => setDivision(e.target.value)} className="kc-input-inline">
           <option value="all">Semua divisi</option>
           {divisions.map((d) => (
             <option key={d} value={d}>{d}</option>
@@ -316,31 +279,16 @@ export default function AdminMentorsPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <span className={`kc-chip ${m.is_active ? 'kc-chip-good' : 'kc-chip-na'}`}>
-                    <i className={`fa-solid ${m.is_active ? 'fa-circle-check' : 'fa-circle-pause'}`} aria-hidden="true"></i>
+                  <Chip tone={m.is_active ? 'good' : 'na'} icon={`fa-solid ${m.is_active ? 'fa-circle-check' : 'fa-circle-pause'}`}>
                     {m.is_active ? 'Aktif' : 'Nonaktif'}
-                  </span>
-                  {dup && (
-                    <span className="kc-chip kc-chip-warn">
-                      <i className="fa-solid fa-clone" aria-hidden="true"></i>
-                      Nama ganda
-                    </span>
-                  )}
+                  </Chip>
+                  {dup && <Chip tone="warn" icon="fa-solid fa-clone">Nama ganda</Chip>}
                 </div>
 
                 <ul className="kc-info">
-                  <li>
-                    <i className="fa-solid fa-building" aria-hidden="true"></i>
-                    <span>{m.division}</span>
-                  </li>
-                  <li>
-                    <i className="fa-regular fa-envelope" aria-hidden="true"></i>
-                    <span>{m.email ? <a href={`mailto:${m.email}`}>{m.email}</a> : '–'}</span>
-                  </li>
-                  <li>
-                    <i className="fa-solid fa-phone" aria-hidden="true"></i>
-                    <span>{m.phone ? <a href={`tel:${m.phone}`}>{m.phone}</a> : '–'}</span>
-                  </li>
+                  <li><i className="fa-solid fa-building" aria-hidden="true"></i><span>{m.division}</span></li>
+                  <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span>{m.email ? <a href={`mailto:${m.email}`}>{m.email}</a> : '–'}</span></li>
+                  <li><i className="fa-solid fa-phone" aria-hidden="true"></i><span>{m.phone ? <a href={`tel:${m.phone}`}>{m.phone}</a> : '–'}</span></li>
                 </ul>
 
                 <div className="kc-stats" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -352,17 +300,8 @@ export default function AdminMentorsPage() {
                   <button type="button" className="kc-btn" onClick={() => openEdit(m)}>
                     <i className="fa-solid fa-pen" aria-hidden="true"></i> Ubah
                   </button>
-                  <button
-                    type="button"
-                    className="kc-btn"
-                    disabled={!m.email}
-                    title={m.email ? 'Atur ulang kata sandi login' : 'Isi email mentor dulu'}
-                    onClick={() => {
-                      setResetFor(m);
-                      setResetPassword(generatePassword());
-                    }}
-                  >
-                    <i className="fa-solid fa-key" aria-hidden="true"></i> Sandi
+                  <button type="button" className="kc-btn" onClick={() => setDetailId(m.id)}>
+                    <i className="fa-solid fa-users" aria-hidden="true"></i> Anak magang
                   </button>
                   <button type="button" className="kc-btn" onClick={() => toggleActive(m)}>
                     <i className={`fa-solid ${m.is_active ? 'fa-pause' : 'fa-play'}`} aria-hidden="true"></i>
@@ -377,6 +316,19 @@ export default function AdminMentorsPage() {
           })}
         </div>
       )}
+
+      {detailId && (() => {
+        const detailMentor = mentors.find((m) => m.id === detailId);
+        if (!detailMentor) return null;
+        return (
+          <MentorDetailModal
+            mentor={detailMentor}
+            people={people}
+            onClose={() => setDetailId(null)}
+            onChanged={() => setReloadKey((k) => k + 1)}
+          />
+        );
+      })()}
 
       {draft && (
         <div className="kc-modal-backdrop" role="presentation" onClick={(e) => e.target === e.currentTarget && setDraft(null)}>
@@ -403,8 +355,9 @@ export default function AdminMentorsPage() {
                 <input id="m-pos" value={draft.position} onChange={(e) => setDraft({ ...draft, position: e.target.value })} placeholder="Contoh: Manajer Operasional Kawasan KEK" />
               </div>
               <div className="kc-field">
-                <label htmlFor="m-mail">Email</label>
-                <input id="m-mail" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="nama@kinra.co.id" />
+                <label htmlFor="m-mail">Email <span className="kc-req">*</span></label>
+                <input id="m-mail" type="email" required={draft.invite} value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="nama@kinra.co.id" />
+                <p className="kc-help">Email ini menjadi username login mentor.</p>
               </div>
               <div className="kc-field">
                 <label htmlFor="m-tel">Telepon</label>
@@ -415,88 +368,20 @@ export default function AdminMentorsPage() {
                 <span>Aktif, tampil di pilihan mentor</span>
               </label>
 
-              <div className="kc-account-box">
-                <label className="kc-check">
-                  <input type="checkbox" checked={draft.account} onChange={(e) => setDraft({ ...draft, account: e.target.checked })} />
-                  <span>{draft.id ? 'Perbarui kata sandi login' : 'Buat akun login untuk mentor ini'}</span>
+              {!draft.id && (
+                <label className="kc-check kc-account-box">
+                  <input type="checkbox" checked={draft.invite} onChange={(e) => setDraft({ ...draft, invite: e.target.checked })} />
+                  <span>Daftarkan akun login (mentor aktivasi sendiri lewat halaman Aktivasi)</span>
                 </label>
-                {draft.account && (
-                  <div className="kc-field" style={{ marginTop: 12 }}>
-                    <label htmlFor="m-pass">Kata sandi</label>
-                    <div className="kc-input-row">
-                      <input id="m-pass" type="text" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} autoComplete="off" spellCheck={false} />
-                      <button type="button" className="kc-btn" onClick={() => setDraft({ ...draft, password: generatePassword() })}>
-                        <i className="fa-solid fa-rotate" aria-hidden="true"></i> Generate
-                      </button>
-                    </div>
-                    <p className="kc-help">
-                      Username login memakai email mentor{draft.email ? `: ${draft.email}` : ''}. Mentor bisa mengganti kata sandi sendiri dari halaman Profil.
-                    </p>
-                  </div>
-                )}
-              </div>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
                 <button type="button" className="kc-btn" onClick={() => setDraft(null)}>Batal</button>
                 <button type="submit" className="kc-btn kc-btn-primary" disabled={saving}>
-                  {saving ? 'Menyimpan…' : 'Simpan'}
+                  {saving ? 'Menyimpan…' : draft.invite && !draft.id ? 'Simpan & daftarkan akun' : 'Simpan'}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {resetFor && (
-        <div className="kc-modal-backdrop" role="presentation" onClick={(e) => e.target === e.currentTarget && setResetFor(null)}>
-          <div className="kc-modal" role="dialog" aria-modal="true" aria-labelledby="reset-title">
-            <p className="kc-eyebrow">Atur ulang kata sandi</p>
-            <h2 id="reset-title">{resetFor.name}</h2>
-            <p>Kata sandi baru akan menggantikan yang lama. Mentor perlu diberi tahu kata sandi barunya.</p>
-            <form onSubmit={submitReset} className="kc-form">
-              <div className="kc-field">
-                <label htmlFor="r-pass">Kata sandi baru</label>
-                <div className="kc-input-row">
-                  <input id="r-pass" type="text" required value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} autoComplete="off" spellCheck={false} />
-                  <button type="button" className="kc-btn" onClick={() => setResetPassword(generatePassword())}>
-                    <i className="fa-solid fa-rotate" aria-hidden="true"></i> Generate
-                  </button>
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" className="kc-btn" onClick={() => setResetFor(null)}>Batal</button>
-                <button type="submit" className="kc-btn kc-btn-primary" disabled={saving}>
-                  {saving ? 'Menyimpan…' : 'Simpan kata sandi'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {issued && (
-        <div className="kc-modal-backdrop" role="presentation">
-          <div className="kc-modal" role="dialog" aria-modal="true" aria-labelledby="issued-title">
-            <p className="kc-eyebrow">{issued.created ? 'Akun dibuat' : 'Kata sandi diperbarui'}</p>
-            <h2 id="issued-title">{issued.name}</h2>
-            <p>Berikan kredensial ini kepada mentor. Kata sandi hanya ditampilkan sekali dan tidak disimpan di sistem.</p>
-            <div className="kc-cred">
-              <div>
-                <span>Username (email)</span>
-                <b>{issued.email}</b>
-              </div>
-              <div>
-                <span>Kata sandi</span>
-                <b className="kc-mono">{issued.password}</b>
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-              <button type="button" className="kc-btn" onClick={() => copyPassword(`Email: ${issued.email}\nKata sandi: ${issued.password}`)}>
-                <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'}`} aria-hidden="true"></i>
-                {copied ? 'Tersalin' : 'Salin'}
-              </button>
-              <button type="button" className="kc-btn kc-btn-primary" onClick={() => setIssued(null)}>Sudah saya catat</button>
-            </div>
           </div>
         </div>
       )}

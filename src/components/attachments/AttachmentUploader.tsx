@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ACCEPT_ATTR, MAX_FILE_MB, MAX_FILES, isImage, validateFiles } from '@/lib/attachments';
+import { MAX_FILE_MB, MAX_FILES, isImage, validateFiles } from '@/lib/attachments';
 
 type Props = {
   files: File[];
@@ -62,16 +62,15 @@ export function AttachmentUploader({ files, onChange, existingCount = 0, disable
       >
         <i className="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
         <span className="kc-dropzone-title">
-          {remaining > 0 ? 'Pilih foto atau PDF bukti' : 'Batas lampiran tercapai'}
+          {remaining > 0 ? 'Pilih berkas bukti' : 'Batas lampiran tercapai'}
         </span>
         <span className="kc-small kc-muted">
-          JPG, PNG, WEBP, atau PDF · maks. {MAX_FILE_MB} MB per berkas
+          Semua jenis berkas · maks. {MAX_FILE_MB} MB per berkas · bisa banyak sekaligus
         </span>
       </button>
       <input
         ref={inputRef}
         type="file"
-        accept={ACCEPT_ATTR}
         multiple
         onChange={handlePick}
         className="sr-only"

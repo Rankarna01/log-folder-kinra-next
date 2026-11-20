@@ -128,6 +128,7 @@ function CalendarInner() {
             ].join(' ');
             return (
               <button
+                disabled={cell.iso > todayIso()}
                 key={cell.iso}
                 type="button"
                 className={classes}

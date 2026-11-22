@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useDivisions } from '@/lib/divisions';
 import { useToast } from '@/components/feedback/FeedbackProvider';
+import { InstallButton } from '@/components/pwa/InstallButton';
 import type { Mentor, Profile, UserRole } from '@/types/database';
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
 
@@ -202,6 +203,14 @@ export default function ProfilePage() {
           {loading ? 'Menyimpan…' : 'Simpan perubahan'}
         </button>
       </form>
+
+      <section className="kc-card kc-form">
+        <div>
+          <h2 className="kc-section-title">Pasang aplikasi</h2>
+          <p className="kc-small kc-muted" style={{ margin: '4px 0 0' }}>Tambahkan Timesheet KINRA ke layar utama HP atau komputer.</p>
+        </div>
+        <InstallButton />
+      </section>
 
       <form onSubmit={handleChangePassword} className="kc-card kc-form">
         <div>

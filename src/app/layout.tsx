@@ -4,6 +4,7 @@ import { Nunito_Sans, IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
 import { AppShell } from '@/components/AppShell';
 import { FeedbackProvider } from '@/components/feedback/FeedbackProvider';
+import { PwaRegister } from '@/components/pwa/PwaRegister';
 
 export const metadata: Metadata = {
   title: 'Timesheet KINRA Sei Mangkei — Logbook Harian Peserta Magang',
@@ -66,6 +67,7 @@ export default async function RootLayout({
       </head>
       <body className="min-h-screen text-[#111827] antialiased bg-[#F0F4F3]">
         <FeedbackProvider>
+          <PwaRegister />
           <AppShell>{children}</AppShell>
         </FeedbackProvider>
       </body>

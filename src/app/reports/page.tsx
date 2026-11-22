@@ -1,203 +1,312 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { PageHead, StatTiles, StatTile, Skeleton } from '@/components/ui/Kit';
+import { useToast } from '@/components/feedback/FeedbackProvider';
+import { ReportSheet, fmtLong, parseIso, toIso } from '@/components/reports/ReportSheet';
+import { TemplateEditor } from '@/components/reports/TemplateEditor';
+import { TemplateCards, type TemplateCardItem } from '@/components/reports/TemplateCards';
+import { DEFAULT_TEMPLATE, normalizeTemplate, weekNumberOfMonth, type TemplateConfig } from '@/lib/reports/template';
 import type { Logbook, Profile } from '@/types/database';
+
+type Tab = 'mingguan' | 'rentang' | 'template';
+
+type SavedTemplate = { id: string; name: string; config: TemplateConfig };
+
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const todayIso = () => toIso(new Date());
+const mondayOf = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
 
 export default function ReportsPage() {
   const supabase = createClient();
+  const { toast } = useToast();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [logs, setLogs] = useState<Logbook[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [tab, setTab] = useState<Tab>('mingguan');
+  const [anchor, setAnchor] = useState<string>(todayIso());
+  const [rangeStart, setRangeStart] = useState<string>(toIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [rangeEnd, setRangeEnd] = useState<string>(todayIso());
+
+  const [templates, setTemplates] = useState<SavedTemplate[]>([]);
+  const [templatesReady, setTemplatesReady] = useState(true);
+  const [activeKey, setActiveKey] = useState<string>('standar');
+  const [editing, setEditing] = useState<{ key: string; name: string; config: TemplateConfig } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-      if (!user) return;
+      const [{ data: prof }, { data: logbooks }, { data: tpls, error: tplErr }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        supabase.from('logbooks').select('*, attachments(*)').eq('user_id', user.id).order('date', { ascending: true }),
+        supabase.from('report_templates').select('id,name,config').order('created_at', { ascending: true }),
+      ]);
 
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (prof) setProfile(prof);
-
-      const { data: logbooks } = await supabase
-        .from('logbooks')
-        .select('*, attachments(*)')
-        .eq('user_id', user.id)
-        .order('date', { ascending: true });
-
+      if (prof) setProfile(prof as Profile);
       if (logbooks) setLogs(logbooks as Logbook[]);
+      if (tplErr) {
+        setTemplatesReady(false);
+      } else {
+        setTemplates((tpls ?? []).map((t) => ({ id: t.id, name: t.name, config: normalizeTemplate(t.config) })));
+      }
       setLoading(false);
     }
-
     loadData();
   }, [supabase]);
 
-  const handlePrint = () => {
-    window.print();
+  // Periode mingguan: Senin–Minggu dari tanggal jangkar
+  const week = useMemo(() => {
+    const mon = mondayOf(parseIso(anchor));
+    const sun = addDays(mon, 6);
+    const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+    return {
+      start: mon,
+      end: sun,
+      days,
+      label: `Minggu ke-${weekNumberOfMonth(mon)} · ${fmtLong(mon)} – ${fmtLong(sun)}`,
+    };
+  }, [anchor]);
+
+  // Periode rentang bebas
+  const range = useMemo(() => {
+    const s = parseIso(rangeStart);
+    const e = parseIso(rangeEnd);
+    const valid = s.getTime() <= e.getTime() && (e.getTime() - s.getTime()) / 86400000 < 366;
+    const count = valid ? Math.round((e.getTime() - s.getTime()) / 86400000) + 1 : 0;
+    const days = valid ? Array.from({ length: count }, (_, i) => addDays(s, i)) : [];
+    return { start: s, end: e, days, valid, label: valid ? `${fmtLong(s)} – ${fmtLong(e)}` : '' };
+  }, [rangeStart, rangeEnd]);
+
+  // Periode yang sedang dicetak (tab template ikut menampilkan pratinjau mingguan)
+  const active = tab === 'rentang' ? range : week;
+  const startIso = toIso(active.start);
+  const endIso = toIso(active.end);
+
+  const periodLogs = useMemo(
+    () => (active.start && active.end ? logs.filter((l) => l.date >= startIso && l.date <= endIso) : []),
+    [logs, startIso, endIso, active.start, active.end]
+  );
+
+  const summary = useMemo(() => {
+    const count = (s: Logbook['status']) => periodLogs.filter((l) => l.status === s).length;
+    return { total: periodLogs.length, approved: count('approved'), submitted: count('submitted'), rejected: count('rejected') };
+  }, [periodLogs]);
+
+  const shiftWeek = (dir: -1 | 1) => setAnchor(toIso(addDays(parseIso(anchor), dir * 7)));
+
+  const cardItems: TemplateCardItem[] = useMemo(
+    () => [
+      { key: 'standar', name: 'Standar', config: DEFAULT_TEMPLATE, builtIn: true },
+      ...templates.map((t) => ({ key: t.id, name: t.name, config: t.config })),
+    ],
+    [templates]
+  );
+
+  const activeConfig = cardItems.find((c) => c.key === activeKey)?.config ?? DEFAULT_TEMPLATE;
+  const cloneDefault = (): TemplateConfig => JSON.parse(JSON.stringify(DEFAULT_TEMPLATE));
+
+  const openEditor = (key: string) => {
+    if (key === 'standar') {
+      // Template bawaan tidak diubah: buka sebagai salinan baru
+      setEditing({ key: 'new', name: 'Salinan Standar', config: cloneDefault() });
+      return;
+    }
+    const found = templates.find((t) => t.id === key);
+    if (found) setEditing({ key: found.id, name: found.name, config: found.config });
   };
 
+  const newTemplate = () => setEditing({ key: 'new', name: '', config: cloneDefault() });
+
+  const activate = (key: string, on: boolean) => setActiveKey(on ? key : 'standar');
+
+  const saveEditing = async () => {
+    if (!editing) return;
+    const name = editing.name.trim();
+    if (!name) {
+      toast.warning('Isi nama template dulu sebelum menyimpan.', 'Nama template kosong');
+      return;
+    }
+    setSaving(true);
+    if (editing.key === 'new') {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setSaving(false);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('report_templates')
+        .insert({ user_id: user.id, name, config: editing.config })
+        .select('id,name,config')
+        .single();
+      setSaving(false);
+      if (error || !data) {
+        toast.error(error?.message ?? 'Template belum bisa disimpan.', 'Gagal menyimpan');
+        return;
+      }
+      setTemplates((list) => [...list, { id: data.id, name: data.name, config: normalizeTemplate(data.config) }]);
+      setActiveKey(data.id);
+      setEditing(null);
+      toast.success(`Template "${name}" disimpan dan dipakai untuk cetak.`);
+      return;
+    }
+    const { error } = await supabase
+      .from('report_templates')
+      .update({ name, config: editing.config, updated_at: new Date().toISOString() })
+      .eq('id', editing.key);
+    setSaving(false);
+    if (error) {
+      toast.error(error.message, 'Gagal memperbarui');
+      return;
+    }
+    setTemplates((list) => list.map((t) => (t.id === editing.key ? { ...t, name, config: editing.config } : t)));
+    setEditing(null);
+    toast.success('Template diperbarui.');
+  };
+
+  const deleteEditing = async () => {
+    if (!editing || editing.key === 'new') return;
+    if (!window.confirm('Hapus template ini? Tindakan ini tidak bisa dibatalkan.')) return;
+    setSaving(true);
+    const { error } = await supabase.from('report_templates').delete().eq('id', editing.key);
+    setSaving(false);
+    if (error) {
+      toast.error(error.message, 'Gagal menghapus');
+      return;
+    }
+    setTemplates((list) => list.filter((t) => t.id !== editing.key));
+    if (activeKey === editing.key) setActiveKey('standar');
+    setEditing(null);
+    toast.info('Template dihapus.');
+  };
+
+  const previewConfig = editing ? editing.config : activeConfig;
+
+  const tabBtn = (key: Tab, label: string) => (
+    <button type="button" className="kc-btn" aria-pressed={tab === key} onClick={() => setTab(key)}>
+      {label}
+    </button>
+  );
+
   return (
-    <div className="flex-1 flex flex-col space-y-4">
-      <div className="space-y-4 print:p-0 print:m-0">
-        {/* Screen Header (Hidden on Print) */}
-        <header className="flex items-center justify-between print:hidden">
-          <Link
-            href="/dashboard"
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#18181B] shadow-2xs hover:scale-105 transition"
-          >
-            <i className="fa-solid fa-chevron-left text-sm"></i>
-          </Link>
-          <h1 className="text-[17px] font-semibold text-[#111827]">Laporan Kegiatan Magang</h1>
-          <button
-            onClick={handlePrint}
-            className="bg-[#0B6E6C] hover:bg-[#085856] text-white text-xs font-bold px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <i className="fa-solid fa-print text-[11px]"></i>
-            <span>Cetak PDF</span>
+    <div className="space-y-4">
+      <PageHead
+        eyebrow="Laporan"
+        title="Cetak laporan"
+        lead="Pilih periode dan template, lalu cetak atau simpan sebagai PDF."
+        actions={
+          <button type="button" className="kc-btn kc-btn-primary" onClick={() => window.print()} disabled={loading || (tab === 'rentang' && !range.valid)}>
+            <i className="fa-solid fa-print" aria-hidden="true"></i> Cetak PDF
           </button>
-        </header>
+        }
+      />
 
-        {/* Printable Official KINRA Document Sheet */}
-        <div className="bg-white rounded-[28px] p-6 shadow-sm space-y-4 print:shadow-none print:rounded-none print:p-2 text-xs">
-          {/* Letterhead */}
-          <div className="border-b-2 border-[#0B6E6C] pb-3 flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/logo/kinra-logo.png" alt="KINRA Sei Mangkei" className="h-10 w-auto object-contain" />
-            <div>
-              <h2 className="font-bold text-[#0B6E6C] uppercase text-sm tracking-wide">
-                PT Kawasan Industri Nusantara (KINRA Sei Mangkei)
-              </h2>
-              <p className="text-[10px] text-zinc-500">KEK Sei Mangkei, Sumatera Utara</p>
-              <p className="text-[11px] font-bold text-zinc-800 uppercase mt-0.5">
-                Laporan Kegiatan Harian Peserta Magang (Monthly)
-              </p>
-            </div>
-          </div>
-
-          {/* Identity Grid */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] bg-[#F4F7F6] p-3 rounded-2xl print:bg-transparent">
-            <div>
-              <span className="text-zinc-500">Nama Peserta:</span>{' '}
-              <strong className="text-[#111827]">{profile?.name || 'Peserta Magang'}</strong>
-            </div>
-            <div>
-              <span className="text-zinc-500">Divisi:</span>{' '}
-              <strong className="text-[#111827]">{profile?.division || 'Divisi IT'}</strong>
-            </div>
-            <div>
-              <span className="text-zinc-500">Posisi:</span>{' '}
-              <strong className="text-[#111827]">{profile?.position || 'Junior Full stack'}</strong>
-            </div>
-            <div>
-              <span className="text-zinc-500">Mentor:</span>{' '}
-              <strong className="text-[#111827]">{profile?.mentor_name || 'RIZKY DELIANNGI'}</strong>
-            </div>
-          </div>
-
-          {/* Table of Entries */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-[10px]">
-              <thead>
-                <tr className="bg-[#0B6E6C] text-white">
-                  <th className="p-2 rounded-l-lg">No</th>
-                  <th className="p-2">Tanggal & Jam</th>
-                  <th className="p-2">Judul Kegiatan</th>
-                  <th className="p-2">Deskripsi Kegiatan</th>
-                  <th className="p-2">Output / Hasil</th>
-                  <th className="p-2 rounded-r-lg">Lokasi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-200">
-                {logs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-4 text-zinc-400">
-                      {loading ? 'Memuat rekapan logbook...' : 'Belum ada logbook pada periode ini.'}
-                    </td>
-                  </tr>
-                ) : (
-                  logs.map((log, index) => {
-                    const isLink = log.output && /^(https?:\/\/|www\.)/i.test(log.output.trim());
-                    const linkHref = isLink
-                      ? log.output!.trim().startsWith('http')
-                        ? log.output!.trim()
-                        : `https://${log.output!.trim()}`
-                      : null;
-
-                    return (
-                      <tr key={log.id} className="hover:bg-zinc-50/50">
-                        <td className="p-2 align-top font-bold">{index + 1}</td>
-                        <td className="p-2 align-top whitespace-nowrap">
-                          <strong>{log.date}</strong>
-                          <br />
-                          {log.start_time.slice(0, 5)} - {log.end_time.slice(0, 5)}
-                        </td>
-                        <td className="p-2 align-top font-semibold text-[#111827]">{log.title}</td>
-                        <td className="p-2 align-top text-zinc-700 leading-relaxed whitespace-pre-line">
-                          {log.final_description}
-                        </td>
-                        <td className="p-2 align-top">
-                          {linkHref ? (
-                            <a
-                              href={linkHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#0B6E6C] font-bold underline break-all"
-                            >
-                              🔗 Tautan Berkas
-                            </a>
-                          ) : (
-                            log.output || '-'
-                          )}
-
-                          {log.attachments && log.attachments.length > 0 ? (
-                            <Link
-                              href={`/logbook/${log.id}#bukti`}
-                              className="print:hidden mt-1 inline-flex items-center gap-1 bg-[#C8EBE5] text-[#074745] font-bold text-[9px] px-2 py-0.5 rounded-full"
-                            >
-                              Cek bukti ({log.attachments.length})
-                            </Link>
-                          ) : (
-                            <span className="print:hidden mt-1 inline-block text-[9px] font-bold text-amber-700">Belum ada bukti</span>
-                          )}
-                          {log.attachments && log.attachments.length > 0 && (
-                            <span className="hidden print:inline text-[9px]">{log.attachments.length} lampiran bukti</span>
-                          )}
-                        </td>
-                        <td className="p-2 align-top font-bold">
-                          {log.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Signatures */}
-          <div className="pt-6 grid grid-cols-2 gap-8 text-center text-[11px]">
-            <div>
-              <p>Peserta Magang,</p>
-              <div className="h-16"></div>
-              <p className="font-bold underline">{profile?.name || 'Peserta Magang'}</p>
-            </div>
-            <div>
-              <p>Mengetahui, Mentor Pembimbing</p>
-              <div className="h-16"></div>
-              <p className="font-bold underline">{profile?.mentor_name || 'RIZKY DELIANNGI'}</p>
-            </div>
-          </div>
+      <section className="kc-card print:hidden" style={{ gap: 12 }}>
+        <div className="kc-card-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+          {tabBtn('mingguan', 'Mingguan')}
+          {tabBtn('rentang', 'Rentang tanggal')}
+          {tabBtn('template', 'Template')}
+          <span style={{ flex: 1 }} />
         </div>
-      </div>
+
+        {!templatesReady && (
+          <p className="kc-small kc-muted" style={{ margin: 0 }}>
+            Penyimpanan template belum aktif. Jalankan migrasi <code>20261122000000_report_templates.sql</code> di Supabase. Template standar tetap bisa dipakai.
+          </p>
+        )}
+
+        {tab === 'mingguan' && (
+          <div className="kc-card-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <button type="button" className="kc-btn" onClick={() => shiftWeek(-1)} aria-label="Minggu sebelumnya">
+              <i className="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <span className="kc-small" style={{ fontWeight: 700 }}>{week.label}</span>
+            <button type="button" className="kc-btn" onClick={() => shiftWeek(1)} aria-label="Minggu berikutnya" disabled={toIso(week.start) > todayIso()}>
+              <i className="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
+            <input type="date" value={anchor} max={todayIso()} onChange={(e) => e.target.value && setAnchor(e.target.value)} aria-label="Pilih tanggal dalam minggu" className="kc-small" />
+          </div>
+        )}
+
+        {tab === 'rentang' && (
+          <div className="kc-card-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <label className="kc-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Dari
+              <input type="date" value={rangeStart} max={rangeEnd} onChange={(e) => e.target.value && setRangeStart(e.target.value)} className="kc-small" />
+            </label>
+            <label className="kc-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Sampai
+              <input type="date" value={rangeEnd} min={rangeStart} max={todayIso()} onChange={(e) => e.target.value && setRangeEnd(e.target.value)} className="kc-small" />
+            </label>
+            <button type="button" className="kc-btn" onClick={() => { setRangeStart(toIso(mondayOf(new Date()))); setRangeEnd(todayIso()); }}>
+              Minggu ini
+            </button>
+            <button type="button" className="kc-btn" onClick={() => { setRangeStart(toIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1))); setRangeEnd(todayIso()); }}>
+              Bulan ini
+            </button>
+            {!range.valid && <span className="kc-small kc-field-error">Rentang tidak valid: tanggal awal harus sebelum tanggal akhir (maks. 1 tahun).</span>}
+          </div>
+        )}
+
+        <StatTiles>
+          <StatTile icon="fa-solid fa-book" label="Logbook" value={summary.total} />
+          <StatTile icon="fa-solid fa-circle-check" label="Disetujui" value={summary.approved} />
+          <StatTile icon="fa-regular fa-clock" label="Menunggu" value={summary.submitted} />
+          <StatTile icon="fa-solid fa-rotate-left" label="Revisi" value={summary.rejected} />
+        </StatTiles>
+      </section>
+
+      {tab === 'template' && (
+        <div className="space-y-4 print:hidden">
+          <TemplateCards
+            items={cardItems}
+            activeKey={activeKey}
+            editingKey={editing?.key ?? null}
+            onActivate={activate}
+            onEdit={openEditor}
+            onNew={newTemplate}
+          />
+          {editing && (
+            <TemplateEditor
+              name={editing.name}
+              onNameChange={(name) => setEditing((e) => (e ? { ...e, name } : e))}
+              draft={editing.config}
+              onChange={(config) => setEditing((e) => (e ? { ...e, config } : e))}
+              isNew={editing.key === 'new'}
+              saving={saving}
+              onSave={saveEditing}
+              onCancel={() => setEditing(null)}
+              onDelete={editing.key === 'new' ? null : deleteEditing}
+            />
+          )}
+          <p className="kc-eyebrow" style={{ margin: 0 }}>Pratinjau {editing ? '(sedang diedit)' : '(template aktif, minggu berjalan)'}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <Skeleton height={420} />
+      ) : tab === 'rentang' && !range.valid ? null : (
+        <ReportSheet
+          config={tab === 'template' ? previewConfig : activeConfig}
+          profile={profile}
+          logs={periodLogs}
+          days={active.days}
+          periodText={tab === 'rentang' ? range.label : `${fmtLong(week.start)} – ${fmtLong(week.end)}`}
+          kindText={tab === 'rentang' ? 'Rentang tanggal' : 'Mingguan'}
+        />
+      )}
     </div>
   );
 }

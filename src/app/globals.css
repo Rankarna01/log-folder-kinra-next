@@ -790,3 +790,8 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
 @media (max-width: 640px) { .lb-view-grid { grid-template-columns: 1fr; } }
 .kc-day:disabled { opacity: 0.3; cursor: not-allowed; background: transparent; }
 .kc-day:disabled:hover { background: transparent; }
+
+/* Fitur tambahan logbook: ambil foto, rekam suara, rapikan AI */
+.kc-uploader-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.kc-desc-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.kc-voice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

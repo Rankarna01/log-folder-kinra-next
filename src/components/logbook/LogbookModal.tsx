@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { deleteAttachment, uploadAttachments, validateFiles } from '@/lib/attachments';
 import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
 import { AttachmentGallery } from '@/components/attachments/AttachmentGallery';
+import { VoiceInput } from '@/components/logbook/VoiceInput';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import type { Attachment, Logbook } from '@/types/database';
 
@@ -49,12 +50,16 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
   const [endTime, setEndTime] = useState('12:00');
   const [workLocation, setWorkLocation] = useState<'kantor' | 'lapangan'>('kantor');
   const [description, setDescription] = useState('');
+  // Teks asli sebelum dirapikan AI, disimpan sebagai raw_description
+  const [rawDescription, setRawDescription] = useState('');
+  const [polishing, setPolishing] = useState(false);
   const [output, setOutput] = useState('');
   const [obstacles, setObstacles] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
-  const locked = log?.status === 'approved';
+  // Logbook tidak lagi dikunci: disetujui otomatis saat disimpan, dan tetap bisa diubah pemiliknya.
+  const locked = false;
 
   useEffect(() => {
     let active = true;
@@ -78,6 +83,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
         setEndTime(existing.end_time.slice(0, 5));
         setWorkLocation(existing.work_location);
         setDescription(existing.final_description);
+        setRawDescription(existing.raw_description || existing.final_description);
         setOutput(existing.output || '');
         setObstacles(existing.obstacles || '');
         setAttachments(existing.attachments ?? []);
@@ -102,6 +108,35 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
       document.body.style.overflow = prev;
     };
   }, [onClose, inline]);
+
+  const appendDescription = (text: string) =>
+    setDescription((prev) => (prev.trim() ? `${prev.trimEnd()} ${text}` : text));
+
+  const handlePolish = async () => {
+    const text = description.trim();
+    if (!text || polishing) return;
+    setPolishing(true);
+    try {
+      const res = await fetch('/api/logbook/polish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+      if (!res.ok || !json.text) {
+        toast.error(json.error || 'Rapikan AI gagal. Coba lagi.', 'Gagal merapikan');
+        return;
+      }
+      // Teks asli dipertahankan (hanya diisi saat pertama kali dirapikan)
+      setRawDescription((raw) => raw || text);
+      setDescription(json.text);
+      toast.success('Teks sudah dirapikan. Periksa kembali sebelum dikirim.');
+    } catch {
+      toast.error('Tidak dapat terhubung ke server.', 'Gagal merapikan');
+    } finally {
+      setPolishing(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +165,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
       start_time: startTime + ':00',
       end_time: endTime + ':00',
       work_location: workLocation,
-      raw_description: description,
+      raw_description: rawDescription || description,
       final_description: description,
       output: output || null,
       obstacles: obstacles || null,
@@ -141,7 +176,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
       // Revisi dikirim ulang ke mentor sebagai diajukan
       const { error } = await supabase
         .from('logbooks')
-        .update({ ...fields, status: 'submitted', updated_at: new Date().toISOString() })
+        .update({ ...fields, status: 'approved', updated_at: new Date().toISOString() })
         .eq('id', log.id);
       if (error) {
         setSaving(false);
@@ -151,7 +186,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
     } else {
       const { data, error } = await supabase
         .from('logbooks')
-        .insert({ ...fields, user_id: user.id, date, status: 'submitted' })
+        .insert({ ...fields, user_id: user.id, date, status: 'approved' })
         .select()
         .single();
       if (error || !data) {
@@ -170,7 +205,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
     }
 
     setSaving(false);
-    toast.success(log ? 'Perubahan logbook dikirim ulang ke mentor.' : 'Logbook dikirim ke mentor untuk ditinjau.');
+    toast.success('Logbook tersimpan. Mentor dapat melihat dan meninjau.');
     onChanged();
     onClose();
   };
@@ -318,6 +353,13 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
                 <span>Deskripsi Kegiatan Harian</span>
               </label>
               <textarea id="lb-desc" rows={4} required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Tuliskan rincian kegiatan harian yang kamu kerjakan hari ini..." className="w-full rounded-[18px] bg-white border-0 p-3.5 text-xs text-[#111827] leading-relaxed focus:ring-2 focus:ring-[#FDE9B4]" />
+              <div className="kc-desc-tools">
+                <VoiceInput onText={appendDescription} disabled={saving} />
+                <button type="button" className="kc-btn" onClick={handlePolish} disabled={saving || polishing || !description.trim()}>
+                  <i className={`fa-solid ${polishing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`} aria-hidden="true"></i>
+                  {polishing ? ' Merapikan…' : ' Rapikan AI'}
+                </button>
+              </div>
             </section>
 
             <div className="bg-white rounded-[26px] p-4 space-y-3 shadow-2xs">
@@ -366,7 +408,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
 
             <button type="submit" disabled={saving} className="w-full bg-[#0B6E6C] hover:bg-[#085856] text-white text-sm font-bold py-4 rounded-full shadow-md transition active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer">
               <i className="fa-solid fa-floppy-disk"></i>
-              <span>{saving ? 'Menyimpan...' : log ? 'Kirim Ulang ke Mentor' : 'Kirim Logbook ke Mentor'}</span>
+              <span>{saving ? 'Menyimpan...' : 'Simpan Logbook'}</span>
             </button>
           </form>
         )}

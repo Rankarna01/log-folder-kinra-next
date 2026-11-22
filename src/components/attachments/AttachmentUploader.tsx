@@ -14,6 +14,7 @@ type Props = {
 /** Pemilih lampiran bukti: pratinjau, validasi, dan batas jumlah. Unggahnya dilakukan oleh halaman pemanggil. */
 export function AttachmentUploader({ files, onChange, existingCount = 0, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
 
   const previews = useMemo(
@@ -68,10 +69,32 @@ export function AttachmentUploader({ files, onChange, existingCount = 0, disable
           Semua jenis berkas · maks. {MAX_FILE_MB} MB per berkas · bisa banyak sekaligus
         </span>
       </button>
+      <div className="kc-uploader-actions">
+        <button
+          type="button"
+          className="kc-btn"
+          disabled={disabled || remaining <= 0}
+          onClick={() => cameraRef.current?.click()}
+        >
+          <i className="fa-solid fa-camera" aria-hidden="true"></i> Ambil foto
+        </button>
+      </div>
+
       <input
         ref={inputRef}
         type="file"
         multiple
+        onChange={handlePick}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      {/* Kamera langsung di HP; di desktop membuka pemilih berkas gambar */}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         onChange={handlePick}
         className="sr-only"
         tabIndex={-1}

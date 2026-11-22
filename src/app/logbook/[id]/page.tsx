@@ -49,8 +49,6 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
       ? logbook.output!.trim()
       : `https://${logbook.output!.trim()}`
     : null;
-
-  const status = STATUS_CHIP[logbook.status] ?? STATUS_CHIP.submitted;
   const bukti = logbook.attachments ?? [];
 
   return (
@@ -64,7 +62,7 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
           <i className="fa-solid fa-chevron-left text-sm"></i>
         </Link>
         <h1 className="text-[17px] font-semibold text-[#111827]">Rincian Logbook</h1>
-        {logbook.status !== 'approved' ? (
+        {true ? (
           <Link
             href={`/logbook?date=${logbook.date}&open=1`}
             className="bg-[#0B6E6C] text-white text-xs font-bold px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-2xs"
@@ -81,10 +79,6 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
 
       <section className="bg-kinra-grid rounded-[28px] p-5 text-white shadow-xs space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full ${status.cls}`}>
-            <i className={`fa-solid ${status.icon}`}></i>
-            <span>{status.label}</span>
-          </span>
           <span className="inline-flex items-center gap-1.5 bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full">
             <i className={logbook.work_location === 'lapangan' ? 'fa-solid fa-person-digging' : 'fa-solid fa-building'}></i>
             <span>{logbook.work_location === 'lapangan' ? 'Lapangan' : 'Kantor'}</span>
@@ -150,7 +144,7 @@ export default function LogbookDetailPage({ params }: { params: Promise<{ id: st
             <h2 id="bukti-title" className="text-sm font-semibold text-[#111827]">Bukti dokumentasi</h2>
             <p className="text-[11px] text-zinc-500">{bukti.length} lampiran · ketuk untuk memperbesar</p>
           </div>
-          {logbook.status !== 'approved' && (
+          {true && (
             <Link href={`/logbook?date=${logbook.date}&open=1`} className="text-xs font-bold text-[#0B6E6C] hover:underline">
               Kelola bukti
             </Link>

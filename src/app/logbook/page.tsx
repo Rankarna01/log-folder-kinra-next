@@ -146,8 +146,6 @@ function CalendarInner() {
       </section>
 
       <ul className="kc-cal-legend" aria-label="Keterangan status">
-        <li><i className="kc-dot kc-dot-approved" aria-hidden="true"></i>Terverifikasi <b>{counts.approved}</b></li>
-        <li><i className="kc-dot kc-dot-submitted" aria-hidden="true"></i>Menunggu <b>{counts.submitted}</b></li>
         <li><i className="kc-dot kc-dot-rejected" aria-hidden="true"></i>Revisi <b>{counts.rejected}</b></li>
       </ul>
 

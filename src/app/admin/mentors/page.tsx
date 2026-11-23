@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import { useDivisions } from '@/lib/divisions';
 import { PageHead, StatTiles, StatTile, Chip, Skeleton, EmptyState } from '@/components/ui/Kit';
+import { Pagination } from '@/components/ui/Pagination';
 import type { Mentor, Profile } from '@/types/database';
 import { MentorDetailModal } from '@/components/admin/MentorDetailModal';
 import { useConfirm } from '@/components/feedback/ConfirmProvider';
@@ -59,6 +60,8 @@ export default function AdminMentorsPage() {
   const [query, setQuery] = useState('');
   const [division, setDivision] = useState<string>('all');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 6;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [nikError, setNikError] = useState<string | null>(null);
   const nikInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +122,16 @@ export default function AdminMentorsPage() {
       return [m.name, m.position, m.email, m.division].some((v) => norm(v).includes(q));
     });
   }, [mentors, query, division, status]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, division, status]);
+
+  const totalPages = Math.ceil(visible.length / PAGE_SIZE) || 1;
+  const paginatedMentors = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return visible.slice(start, start + PAGE_SIZE);
+  }, [visible, page, PAGE_SIZE]);
 
   const totals = useMemo(
     () => ({
@@ -303,58 +316,69 @@ export default function AdminMentorsPage() {
       {visible.length === 0 ? (
         <EmptyState>{mentors.length === 0 ? 'Belum ada mentor. Tambahkan mentor pertama.' : 'Tidak ada mentor yang cocok.'}</EmptyState>
       ) : (
-        <div className="kc-grid">
-          {visible.map((m) => {
-            const peserta = pesertaByMentor[m.id] || 0;
-            const dup = dupNames.has(norm(m.name));
-            return (
-              <article key={m.id} className="kc-card" style={{ opacity: m.is_active ? 1 : 0.7 }}>
-                <div className="kc-card-head">
-                  <div className="kc-avatar" aria-hidden="true">{m.name.charAt(0).toUpperCase()}</div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <h3>{m.name}</h3>
-                    <p>{m.position || '–'}</p>
+        <>
+          <div className="kc-grid">
+            {paginatedMentors.map((m) => {
+              const peserta = pesertaByMentor[m.id] || 0;
+              const dup = dupNames.has(norm(m.name));
+              return (
+                <article key={m.id} className="kc-card" style={{ opacity: m.is_active ? 1 : 0.7 }}>
+                  <div className="kc-card-head">
+                    <div className="kc-avatar" aria-hidden="true">{m.name.charAt(0).toUpperCase()}</div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h3>{m.name}</h3>
+                      <p>{m.position || '–'}</p>
+                    </div>
                   </div>
-                </div>
 
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <Chip tone={m.is_active ? 'good' : 'na'} icon={`fa-solid ${m.is_active ? 'fa-circle-check' : 'fa-circle-pause'}`}>
-                    {m.is_active ? 'Aktif' : 'Nonaktif'}
-                  </Chip>
-                  {dup && <Chip tone="warn" icon="fa-solid fa-clone">Nama ganda</Chip>}
-                </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <Chip tone={m.is_active ? 'good' : 'na'} icon={`fa-solid ${m.is_active ? 'fa-circle-check' : 'fa-circle-pause'}`}>
+                      {m.is_active ? 'Aktif' : 'Nonaktif'}
+                    </Chip>
+                    {dup && <Chip tone="warn" icon="fa-solid fa-clone">Nama ganda</Chip>}
+                  </div>
 
-                <ul className="kc-info">
-                  <li><i className="fa-solid fa-building" aria-hidden="true"></i><span>{m.division}</span></li>
-                  <li><i className="fa-regular fa-id-card" aria-hidden="true"></i><span>NIK {accountOf(m)?.nim_nik || '–'}</span></li>
-                  {m.email && <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span><a href={`mailto:${m.email}`}>{m.email}</a></span></li>}
-                  <li><i className="fa-solid fa-phone" aria-hidden="true"></i><span>{m.phone ? <a href={`tel:${m.phone}`}>{m.phone}</a> : '–'}</span></li>
-                </ul>
+                  <ul className="kc-info">
+                    <li><i className="fa-solid fa-building" aria-hidden="true"></i><span>{m.division}</span></li>
+                    <li><i className="fa-regular fa-id-card" aria-hidden="true"></i><span>NIK {accountOf(m)?.nim_nik || '–'}</span></li>
+                    {m.email && <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span><a href={`mailto:${m.email}`}>{m.email}</a></span></li>}
+                    <li><i className="fa-solid fa-phone" aria-hidden="true"></i><span>{m.phone ? <a href={`tel:${m.phone}`}>{m.phone}</a> : '–'}</span></li>
+                  </ul>
 
-                <div className="kc-stats" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                  <div><span>Peserta</span><b>{peserta}</b></div>
-                  <div><span>Status</span><b style={{ fontSize: 14 }}>{m.is_active ? 'Aktif' : 'Nonaktif'}</b></div>
-                </div>
+                  <div className="kc-stats" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                    <div><span>Peserta</span><b>{peserta}</b></div>
+                    <div><span>Status</span><b style={{ fontSize: 14 }}>{m.is_active ? 'Aktif' : 'Nonaktif'}</b></div>
+                  </div>
 
-                <div className="kc-card-foot" style={{ gap: 8, flexWrap: 'wrap' }}>
-                  <button type="button" className="kc-btn" onClick={() => openEdit(m)}>
-                    <i className="fa-solid fa-pen" aria-hidden="true"></i> Ubah
-                  </button>
-                  <button type="button" className="kc-btn" onClick={() => setDetailId(m.id)}>
-                    <i className="fa-solid fa-users" aria-hidden="true"></i> Anak magang
-                  </button>
-                  <button type="button" className="kc-btn" onClick={() => toggleActive(m)}>
-                    <i className={`fa-solid ${m.is_active ? 'fa-pause' : 'fa-play'}`} aria-hidden="true"></i>
-                    {m.is_active ? 'Nonaktifkan' : 'Aktifkan'}
-                  </button>
-                  <button type="button" className="kc-btn kc-btn-danger" onClick={() => remove(m)} aria-label={`Hapus ${m.name}`}>
-                    <i className="fa-solid fa-trash-can" aria-hidden="true"></i>
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                  <div className="kc-card-foot" style={{ gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" className="kc-btn" onClick={() => openEdit(m)}>
+                      <i className="fa-solid fa-pen" aria-hidden="true"></i> Ubah
+                    </button>
+                    <button type="button" className="kc-btn" onClick={() => setDetailId(m.id)}>
+                      <i className="fa-solid fa-users" aria-hidden="true"></i> Anak magang
+                    </button>
+                    <button type="button" className="kc-btn" onClick={() => toggleActive(m)}>
+                      <i className={`fa-solid ${m.is_active ? 'fa-pause' : 'fa-play'}`} aria-hidden="true"></i>
+                      {m.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                    </button>
+                    <button type="button" className="kc-btn kc-btn-danger" onClick={() => remove(m)} aria-label={`Hapus ${m.name}`}>
+                      <i className="fa-solid fa-trash-can" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={visible.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            label="mentor"
+          />
+        </>
       )}
 
       {detailId && (() => {

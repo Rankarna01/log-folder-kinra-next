@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import { useDivisions } from '@/lib/divisions';
 import { PageHead, StatTiles, StatTile, Skeleton, EmptyState } from '@/components/ui/Kit';
+import { Pagination } from '@/components/ui/Pagination';
 import type { Mentor, Profile } from '@/types/database';
 
 type Draft = {
@@ -43,6 +44,8 @@ export default function AdminInternsPage() {
   const [mentors, setMentors] = useState<Mentor[]>([]);
   const [query, setQuery] = useState('');
   const [mentorFilter, setMentorFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 6;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [nikError, setNikError] = useState<string | null>(null);
   const nikInputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +87,16 @@ export default function AdminInternsPage() {
       return [p.name, p.nim_nik, p.email, p.division, p.mentor_name].some((v) => norm(v).includes(q));
     });
   }, [interns, query, mentorFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, mentorFilter]);
+
+  const totalPages = Math.ceil(visible.length / PAGE_SIZE) || 1;
+  const paginatedInterns = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return visible.slice(start, start + PAGE_SIZE);
+  }, [visible, page, PAGE_SIZE]);
 
   const withMentor = interns.filter((p) => p.mentor_id).length;
 
@@ -236,30 +249,41 @@ export default function AdminInternsPage() {
       {visible.length === 0 ? (
         <EmptyState>{interns.length === 0 ? 'Belum ada anak magang. Tambahkan peserta pertama.' : 'Tidak ada peserta yang cocok.'}</EmptyState>
       ) : (
-        <div className="kc-grid">
-          {visible.map((p) => (
-            <article key={p.id} className="kc-card">
-              <div className="kc-card-head">
-                <div className="kc-avatar" aria-hidden="true">{p.name.charAt(0).toUpperCase()}</div>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <h3>{p.name}</h3>
-                  <p>{p.position || 'Peserta Magang KINRA'}</p>
+        <>
+          <div className="kc-grid">
+            {paginatedInterns.map((p) => (
+              <article key={p.id} className="kc-card">
+                <div className="kc-card-head">
+                  <div className="kc-avatar" aria-hidden="true">{p.name.charAt(0).toUpperCase()}</div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h3>{p.name}</h3>
+                    <p>{p.position || 'Peserta Magang KINRA'}</p>
+                  </div>
                 </div>
-              </div>
-              <ul className="kc-info">
-                <li><i className="fa-solid fa-building" aria-hidden="true"></i><span>{p.division || '–'}</span></li>
-                <li><i className="fa-solid fa-user-tie" aria-hidden="true"></i><span>{p.mentor_name || 'Belum memilih mentor'}</span></li>
-                <li><i className="fa-regular fa-id-card" aria-hidden="true"></i><span>NIK {p.nim_nik || '–'}</span></li>
-                {p.email && <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span><a href={`mailto:${p.email}`}>{p.email}</a></span></li>}
-              </ul>
-              <div className="kc-card-foot" style={{ gap: 8 }}>
-                <button type="button" className="kc-btn" onClick={() => openEdit(p)}>
-                  <i className="fa-solid fa-pen" aria-hidden="true"></i> Ubah data
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+                <ul className="kc-info">
+                  <li><i className="fa-solid fa-building" aria-hidden="true"></i><span>{p.division || '–'}</span></li>
+                  <li><i className="fa-solid fa-user-tie" aria-hidden="true"></i><span>{p.mentor_name || 'Belum memilih mentor'}</span></li>
+                  <li><i className="fa-regular fa-id-card" aria-hidden="true"></i><span>NIK {p.nim_nik || '–'}</span></li>
+                  {p.email && <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span><a href={`mailto:${p.email}`}>{p.email}</a></span></li>}
+                </ul>
+                <div className="kc-card-foot" style={{ gap: 8 }}>
+                  <button type="button" className="kc-btn" onClick={() => openEdit(p)}>
+                    <i className="fa-solid fa-pen" aria-hidden="true"></i> Ubah data
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={visible.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            label="anak magang"
+          />
+        </>
       )}
 
       {draft && (

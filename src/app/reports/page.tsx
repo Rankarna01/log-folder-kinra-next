@@ -196,11 +196,23 @@ export default function ReportsPage() {
 
   const previewConfig = editing ? editing.config : activeConfig;
 
-  const tabBtn = (key: Tab, label: string) => (
-    <button type="button" className="kc-btn" aria-pressed={tab === key} onClick={() => setTab(key)}>
-      {label}
-    </button>
-  );
+  const tabBtn = (key: Tab, label: string) => {
+    const active = tab === key;
+    return (
+      <button
+        type="button"
+        className={`kc-btn transition-all duration-150 cursor-pointer ${
+          active
+            ? 'kc-btn-primary shadow-xs font-bold !text-white !bg-[#008187] hover:!bg-[#006e73]'
+            : 'hover:border-[#008187] hover:text-[#008187] hover:bg-[#008187]/10'
+        }`}
+        aria-pressed={active}
+        onClick={() => setTab(key)}
+      >
+        {label}
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-4">

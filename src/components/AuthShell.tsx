@@ -36,7 +36,7 @@ function ThemeToggle() {
 
 export function AuthShell({ brandEyebrow, brandTitle, brandText, children, wide }: Props) {
   return (
-    <div className="auth-split">
+    <div className={`auth-split${wide ? ' auth-split-wide' : ''}`}>
       <aside className="auth-brand">
         <span className="auth-circle auth-circle-jingga" aria-hidden="true" />
         <span className="auth-circle auth-circle-merah" aria-hidden="true" />

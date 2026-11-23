@@ -38,7 +38,7 @@ type Step = 'email' | 'password' | 'create';
 function translateError(message: string): string {
   const m = message.toLowerCase();
   if (m.includes('invalid login credentials')) return 'Kata sandi salah. Periksa kembali kata sandi Anda.';
-  if (m.includes('email not confirmed')) return 'Akun belum diaktifkan. Hubungi admin KINRA.';
+  if (m.includes('email not confirmed')) return 'Akun belum diaktifkan. Hubungi admin.';
   if (m.includes('failed to fetch') || m.includes('network')) return 'Tidak dapat terhubung ke server. Periksa koneksi Anda.';
   return message || 'Gagal masuk. Silakan coba lagi.';
 }
@@ -106,7 +106,7 @@ export default function LoginPage() {
       return;
     }
     if (json.state === 'not_found') {
-      setErrorMsg('Data ini belum didaftarkan admin. Hubungi admin KINRA.');
+      setErrorMsg('Data ini belum didaftarkan admin. Hubungi admin.');
       return;
     }
     setLoginEmail(json.email ?? '');

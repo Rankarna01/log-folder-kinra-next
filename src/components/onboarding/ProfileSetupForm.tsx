@@ -147,7 +147,7 @@ export function ProfileSetupForm({ onDone }: { onDone: () => void }) {
         )}
         {!loadingMentors && uniqueMentors.length === 0 && (
           <p className="kc-field-error">
-            <i className="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Admin belum mendaftarkan mentor. Hubungi admin KINRA.
+            <i className="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Admin belum mendaftarkan mentor. Hubungi admin.
           </p>
         )}
       </div>

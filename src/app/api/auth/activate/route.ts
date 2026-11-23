@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
   const found = await findLoginUser(admin, list.users, resolved);
   if (!found) {
-    return NextResponse.json({ error: 'Data ini belum didaftarkan admin. Hubungi admin KINRA.' }, { status: 404 });
+    return NextResponse.json({ error: 'Data ini belum didaftarkan admin. Hubungi admin.' }, { status: 404 });
   }
   if (resolved.kind === 'email') {
     const { data: prof } = await admin.from('profiles').select('role').eq('id', found.id).maybeSingle();

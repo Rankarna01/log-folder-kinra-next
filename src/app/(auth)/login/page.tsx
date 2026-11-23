@@ -33,7 +33,7 @@ const writeEmail = (value: string) => {
   emailListeners.forEach((l) => l());
 };
 
-type Step = 'email' | 'password' | 'create';
+type Step = 'password' | 'create';
 
 function translateError(message: string): string {
   const m = message.toLowerCase();
@@ -54,7 +54,7 @@ export default function LoginPage() {
   // Email login Supabase hasil dari NIK atau email yang diketik (dikembalikan server)
   const [loginEmail, setLoginEmail] = useState('');
 
-  const [step, setStep] = useState<Step>('email');
+  const [step, setStep] = useState<Step>('password');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -91,9 +91,10 @@ export default function LoginPage() {
     router.refresh();
   };
 
-  // Langkah 1: cek NIK atau email
-  const handleEmail = async (e: React.FormEvent) => {
+  // Masuk: cek akun dulu, lalu masuk dengan kata sandi yang sudah diisi
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (step === 'create') return submitActivation();
     setErrorMsg('');
     setLoading(true);
     const identifier = email.trim();
@@ -104,33 +105,31 @@ export default function LoginPage() {
       body: JSON.stringify({ identifier }),
     });
     const json = (await res.json().catch(() => ({}))) as { state?: string; email?: string; error?: string };
-    setLoading(false);
 
     if (!res.ok) {
       setErrorMsg(json.error || 'Gagal memeriksa data masuk.');
+      setLoading(false);
       return;
     }
     if (json.state === 'not_found') {
       setErrorMsg('Data ini belum didaftarkan admin. Hubungi admin.');
+      setLoading(false);
       return;
     }
     setLoginEmail(json.email ?? '');
-    setPassword('');
-    setConfirm('');
-    setStep(json.state === 'pending' ? 'create' : 'password');
+    if (json.state === 'pending') {
+      // Akun lama yang belum pernah diaktifkan: minta kata sandi dua kali
+      setStep('create');
+      setConfirm('');
+      setErrorMsg('Pertama kali masuk. Buat kata sandi lalu ulangi di kolom bawah.');
+      setLoading(false);
+      return;
+    }
+    await finishLogin(json.email ?? '', password, identifier);
   };
 
-  // Langkah 2a: masuk dengan kata sandi
-  const handlePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setLoading(true);
-    await finishLogin(loginEmail, password, email.trim());
-  };
-
-  // Langkah 2b: aktivasi pertama kali (kata sandi dua kali), lalu masuk
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Aktivasi akun lama (kata sandi dua kali), lalu masuk
+  const submitActivation = async () => {
     setErrorMsg('');
     if (password.length < MIN_PASSWORD_LENGTH) {
       setErrorMsg(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
@@ -157,28 +156,15 @@ export default function LoginPage() {
     await finishLogin(json.email ?? loginEmail, password, identifier);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    if (step === 'email') return handleEmail(e);
-    if (step === 'password') return handlePassword(e);
-    return handleCreate(e);
-  };
-
-  // Mengubah NIK setelah langkah sandi dimulai: kembali ke langkah pertama
+  // Mengubah NIK: sembunyikan kolom aktivasi lagi dan cek ulang saat masuk
   const onIdentifierChange = (v: string) => {
     setEmailInput(v);
-    if (step !== 'email') {
-      setStep('email');
-      setPassword('');
+    if (step !== 'password') {
+      setStep('password');
       setConfirm('');
       setErrorMsg('');
     }
-  };
-
-  const backToEmail = () => {
-    setStep('email');
-    setErrorMsg('');
-    setPassword('');
-    setConfirm('');
+    setLoginEmail('');
   };
 
   return (
@@ -188,15 +174,11 @@ export default function LoginPage() {
       brandText="Catat kegiatan, ajukan ke mentor, dan pantau persetujuan dalam satu tempat."
     >
       <p className="eyebrow auth-eyebrow">Masuk</p>
-      <h1 className="auth-title">
-        {step === 'email' && 'Masuk ke akun Anda'}
-        {step === 'password' && 'Masukkan kata sandi'}
-        {step === 'create' && 'Buat kata sandi Anda'}
-      </h1>
+      <h1 className="auth-title">{step === 'create' ? 'Buat kata sandi Anda' : 'Masuk ke akun Anda'}</h1>
       <p className="auth-lead">
-        {step === 'email' && 'Peserta dan mentor masuk dengan NIK. Admin masuk dengan ID.'}
-        {step === 'password' && `Masuk sebagai ${email.trim()}.`}
-        {step === 'create' && 'Pertama kali masuk. Buat kata sandi, lalu ulangi sekali lagi untuk memastikan.'}
+        {step === 'create'
+          ? 'Pertama kali masuk. Buat kata sandi, lalu ulangi sekali lagi untuk memastikan.'
+          : 'Peserta dan mentor masuk dengan NIK. Admin masuk dengan ID.'}
       </p>
 
       {errorMsg && (
@@ -209,29 +191,15 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="auth-form">
         <input type="text" name="username" value={email.trim()} autoComplete="username" readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
         <AuthField id="email" label="Masukkan NIK ID Absen FInger" type="text" icon="fa-id-card" value={email} onChange={onIdentifierChange} placeholder="NIK (peserta), ID admin, atau email" autoComplete="username" />
-
-        {step === 'password' && (
-          <AuthField id="password" label="Kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder="Masukkan kata sandi" autoComplete="current-password" />
-        )}
+        <AuthField id="password" label="Kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder="Masukkan kata sandi" autoComplete={step === 'create' ? 'new-password' : 'current-password'} />
 
         {step === 'create' && (
-          <>
-            <AuthField id="new-password" label="Buat kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder={`Minimal ${MIN_PASSWORD_LENGTH} karakter`} autoComplete="new-password" />
-            <AuthField id="confirm-password" label="Ulangi kata sandi" type="password" icon="fa-shield-halved" value={confirm} onChange={setConfirm} placeholder="Ketik ulang kata sandi" autoComplete="new-password" />
-          </>
+          <AuthField id="confirm-password" label="Ulangi kata sandi" type="password" icon="fa-shield-halved" value={confirm} onChange={setConfirm} placeholder="Ketik ulang kata sandi" autoComplete="new-password" />
         )}
 
         <button type="submit" disabled={loading} className="btn-masuk">
-          {loading
-            ? step === 'email' ? 'Memeriksa…' : step === 'password' ? 'Memproses…' : 'Menyimpan…'
-            : step === 'email' ? 'Lanjut' : step === 'password' ? 'Masuk' : 'Simpan dan masuk'}
+          {loading ? 'Memproses…' : step === 'create' ? 'Simpan dan masuk' : 'Masuk'}
         </button>
-
-        {step !== 'email' && (
-          <button type="button" className="auth-link-btn" onClick={backToEmail}>
-            Ganti NIK atau email
-          </button>
-        )}
       </form>
 
       <p className="auth-foot">PT Kawasan Industri Nusantara · KEK Sei Mangkei</p>

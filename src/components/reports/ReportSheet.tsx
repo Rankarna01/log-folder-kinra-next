@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { Logbook, Profile } from '@/types/database';
 import {
   CELL_OPTIONS,
@@ -95,6 +95,67 @@ function cellValue(l: Logbook, key: ColumnKey): ReactNode {
 
 /** Lembar laporan cetak. Susunan dan teks mengikuti template yang dipilih. */
 export function ReportSheet({ config, profile, logs, days, periodText, kindText }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  const [sheetHeight, setSheetHeight] = useState<number | null>(null);
+  const [mode, setMode] = useState<'fit' | 'actual' | 'custom'>('fit');
+  const [customZoom, setCustomZoom] = useState<number>(1);
+
+  const BASE_WIDTH = 740;
+
+  useEffect(() => {
+    const measure = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+      if (sheetRef.current) {
+        setSheetHeight(sheetRef.current.offsetHeight);
+      }
+    };
+
+    measure();
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      if (containerRef.current) ro.observe(containerRef.current);
+      if (sheetRef.current) ro.observe(sheetRef.current);
+    }
+
+    window.addEventListener('resize', measure);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
+  const autoFitScale = useMemo(() => {
+    if (!containerWidth || containerWidth >= BASE_WIDTH) return 1;
+    const available = Math.max(260, containerWidth - 4);
+    return Math.round((available / BASE_WIDTH) * 100) / 100;
+  }, [containerWidth]);
+
+  const effectiveScale = useMemo(() => {
+    if (!containerWidth || containerWidth >= BASE_WIDTH) return 1;
+    if (mode === 'fit') return autoFitScale;
+    if (mode === 'actual') return 1;
+    return customZoom;
+  }, [containerWidth, mode, autoFitScale, customZoom]);
+
+  const isScaled = effectiveScale < 1 || (containerWidth !== null && containerWidth < BASE_WIDTH);
+
+  const handleZoomIn = () => {
+    setMode('custom');
+    setCustomZoom((prev) => Math.min(1.4, Math.round((prev + 0.1) * 10) / 10));
+  };
+
+  const handleZoomOut = () => {
+    setMode('custom');
+    setCustomZoom((prev) => Math.max(0.3, Math.round((prev - 0.1) * 10) / 10));
+  };
+
   const tpl = config ?? DEFAULT_TEMPLATE;
 
   const visibleCols = useMemo(() => {
@@ -121,8 +182,107 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
   const withNotes = logs.filter((l) => l.status === 'rejected' && l.review_notes);
 
   return (
-    <div id="print-area" className="rp-sheet">
-      <div className="rp-head">
+    <div ref={containerRef} className="rp-container w-full overflow-hidden">
+      {/* Toolbar Kontrol Skala Pratinjau (khusus layar mobile agar tidak terpotong) */}
+      {isScaled && (
+        <div className="rp-preview-toolbar print:hidden mb-2.5 px-3 py-2 bg-[var(--surface-2)] border border-[var(--line-2)] rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-2xs select-none">
+          <div className="flex items-center gap-2">
+            <i className="fa-solid fa-file-invoice text-[var(--brand)] text-xs" aria-hidden="true"></i>
+            <span className="font-bold text-xs text-[var(--ink)]">Pratinjau Lembar</span>
+            <span className="px-2 py-0.5 rounded-full bg-[var(--surface-3)] text-[var(--ink)] font-mono text-[10.5px] font-bold">
+              {Math.round(effectiveScale * 100)}%
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('fit');
+                setCustomZoom(autoFitScale);
+              }}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                mode === 'fit'
+                  ? 'bg-[var(--tosca)] text-white shadow-2xs'
+                  : 'bg-[var(--surface)] text-[var(--ink-2)] border border-[var(--line-2)] hover:bg-[var(--surface-3)]'
+              }`}
+              title="Kecilkan agar pas di layar dan tidak terpotong"
+            >
+              <i className="fa-solid fa-compress text-[10px]"></i>
+              <span>Pas Layar</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode('actual');
+                setCustomZoom(1);
+              }}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                mode === 'actual'
+                  ? 'bg-[var(--tosca)] text-white shadow-2xs'
+                  : 'bg-[var(--surface)] text-[var(--ink-2)] border border-[var(--line-2)] hover:bg-[var(--surface-3)]'
+              }`}
+              title="Ukuran asli 100% (bisa digeser ke samping)"
+            >
+              <i className="fa-solid fa-expand text-[10px]"></i>
+              <span>100%</span>
+            </button>
+
+            <div className="h-4 w-px bg-[var(--line-2)] mx-0.5 hidden sm:block" />
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                className="w-7 h-7 rounded-lg bg-[var(--surface)] border border-[var(--line-2)] text-[var(--ink-2)] hover:bg-[var(--surface-3)] flex items-center justify-center transition cursor-pointer"
+                aria-label="Perkecil pratinjau"
+                title="Perkecil"
+              >
+                <i className="fa-solid fa-minus text-[10px]"></i>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                className="w-7 h-7 rounded-lg bg-[var(--surface)] border border-[var(--line-2)] text-[var(--ink-2)] hover:bg-[var(--surface-3)] flex items-center justify-center transition cursor-pointer"
+                aria-label="Perbesar pratinjau"
+                title="Perbesar"
+              >
+                <i className="fa-solid fa-plus text-[10px]"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kontainer scroll & scale viewport */}
+      <div
+        className="rp-scroll-viewport"
+        style={{
+          width: '100%',
+          overflowX: effectiveScale < 1 && mode === 'fit' ? 'hidden' : 'auto',
+          overflowY: 'hidden',
+          height:
+            effectiveScale < 1 && sheetHeight
+              ? `${Math.ceil(sheetHeight * effectiveScale) + 6}px`
+              : 'auto',
+          transition: 'height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+        }}
+      >
+        <div
+          ref={sheetRef}
+          id="print-area"
+          className="rp-sheet"
+          style={{
+            width: isScaled ? `${BASE_WIDTH}px` : '100%',
+            minWidth: isScaled ? `${BASE_WIDTH}px` : undefined,
+            transform: effectiveScale !== 1 ? `scale(${effectiveScale})` : undefined,
+            transformOrigin: 'top left',
+            transition: 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          }}
+        >
+          <div className="rp-head">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/images/logo/danantara-logo.png" alt="Danantara Indonesia" className="rp-logo-left" />
         <h1 className="rp-title">{tpl.title}</h1>
@@ -361,10 +521,30 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
           @page { size: A4 landscape; margin: 10mm; }
           body * { visibility: hidden !important; }
           #print-area, #print-area * { visibility: visible !important; }
-          #print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 0; box-shadow: none; border-radius: 0; }
+          #print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            transform: none !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          .rp-container, .rp-scroll-viewport {
+            overflow: visible !important;
+            height: auto !important;
+            width: 100% !important;
+          }
+          .rp-preview-toolbar {
+            display: none !important;
+          }
           .rp-detail tr, .rp-side li { break-inside: avoid; }
         }
       `}</style>
+        </div>
+      </div>
     </div>
   );
 }

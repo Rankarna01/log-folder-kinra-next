@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { PageHead, StatTiles, StatTile, Skeleton } from '@/components/ui/Kit';
 import { useToast } from '@/components/feedback/FeedbackProvider';
+import { useConfirm } from '@/components/feedback/ConfirmProvider';
 import { ReportSheet, fmtLong, parseIso, toIso } from '@/components/reports/ReportSheet';
 import { TemplateEditor } from '@/components/reports/TemplateEditor';
 import { TemplateCards, type TemplateCardItem } from '@/components/reports/TemplateCards';
@@ -21,6 +22,7 @@ const mondayOf = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
 export default function ReportsPage() {
   const supabase = createClient();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [logs, setLogs] = useState<Logbook[]>([]);
@@ -178,7 +180,7 @@ export default function ReportsPage() {
 
   const deleteEditing = async () => {
     if (!editing || editing.key === 'new') return;
-    if (!window.confirm('Hapus template ini? Tindakan ini tidak bisa dibatalkan.')) return;
+    if (!(await confirm({ message: 'Template ini akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.', confirmLabel: 'Hapus template', danger: true }))) return;
     setSaving(true);
     const { error } = await supabase.from('report_templates').delete().eq('id', editing.key);
     setSaving(false);

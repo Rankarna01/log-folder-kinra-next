@@ -7,6 +7,7 @@ import { AttachmentUploader } from '@/components/attachments/AttachmentUploader'
 import { AttachmentGallery } from '@/components/attachments/AttachmentGallery';
 import { VoiceInput } from '@/components/logbook/VoiceInput';
 import { useToast } from '@/components/feedback/FeedbackProvider';
+import { useConfirm } from '@/components/feedback/ConfirmProvider';
 import type { Attachment, Logbook } from '@/types/database';
 
 type Props = {
@@ -40,6 +41,7 @@ const dayLabel = (iso: string) => {
 export function LogbookModal({ date, onClose, onChanged, inline = false }: Props) {
   const supabase = createClient();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [loading, setLoading] = useState(true);
   const [log, setLog] = useState<(Logbook & { attachments?: Attachment[] }) | null>(null);
@@ -212,7 +214,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
 
   const handleDelete = async () => {
     if (!log || locked) return;
-    if (!window.confirm('Hapus logbook pada tanggal ini? Bukti ikut terhapus.')) return;
+    if (!(await confirm({ message: 'Logbook pada tanggal ini akan dihapus beserta buktinya.', confirmLabel: 'Hapus logbook', danger: true }))) return;
     const { error } = await supabase.from('logbooks').delete().eq('id', log.id);
     if (error) {
       toast.error(error.message, 'Gagal menghapus');
@@ -224,7 +226,7 @@ export function LogbookModal({ date, onClose, onChanged, inline = false }: Props
   };
 
   const handleRemoveAttachment = async (att: Attachment) => {
-    if (locked || !window.confirm('Hapus bukti ini?')) return;
+    if (locked || !(await confirm({ message: 'Bukti ini akan dihapus dari logbook.', confirmLabel: 'Hapus bukti', danger: true }))) return;
     const err = await deleteAttachment(supabase, att);
     if (err) {
       toast.error(err, 'Bukti gagal dihapus');

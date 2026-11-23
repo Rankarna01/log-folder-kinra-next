@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/feedback/FeedbackProvider';
+import { useConfirm } from '@/components/feedback/ConfirmProvider';
 import { useDivisions } from '@/lib/divisions';
 import { PageHead, StatTiles, StatTile, Skeleton, EmptyState } from '@/components/ui/Kit';
 import { Pagination } from '@/components/ui/Pagination';
@@ -37,6 +38,7 @@ export default function AdminInternsPage() {
   const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { divisions } = useDivisions();
 
   const [loading, setLoading] = useState(true);
@@ -205,6 +207,27 @@ export default function AdminInternsPage() {
     }
   };
 
+  const removeIntern = async (p: Profile) => {
+    const ok = await confirm({
+      title: 'Hapus data anak magang?',
+      message: `Akun "${p.name}" (NIK: ${p.nim_nik || '-'}) beserta seluruh riwayat logbook dan lampiran bukti kegiatannya akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.`,
+      confirmLabel: 'Hapus permanen',
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await postAccount({ action: 'delete', profileId: p.id });
+      toast.success(`Data peserta ${p.name} berhasil dihapus.`, 'Peserta dihapus');
+      if (draft?.profileId === p.id) {
+        setDraft(null);
+      }
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      toast.error((err as Error).message || 'Gagal menghapus anak magang', 'Gagal menghapus');
+    }
+  };
+
   if (loading) return <Skeleton height={260} />;
 
   return (
@@ -269,6 +292,14 @@ export default function AdminInternsPage() {
                 <div className="kc-card-foot" style={{ gap: 8 }}>
                   <button type="button" className="kc-btn" onClick={() => openEdit(p)}>
                     <i className="fa-solid fa-pen" aria-hidden="true"></i> Ubah data
+                  </button>
+                  <button
+                    type="button"
+                    className="kc-btn kc-btn-danger"
+                    onClick={() => removeIntern(p)}
+                    title={`Hapus data ${p.name}`}
+                  >
+                    <i className="fa-solid fa-trash-can" aria-hidden="true"></i> Hapus
                   </button>
                 </div>
               </article>
@@ -360,11 +391,26 @@ export default function AdminInternsPage() {
                 <input id="i-tel" type="tel" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-                <button type="button" className="kc-btn" onClick={() => setDraft(null)}>Batal</button>
-                <button type="submit" className="kc-btn kc-btn-primary" disabled={saving}>
-                  {saving ? 'Menyimpan…' : draft.profileId ? 'Simpan perubahan' : 'Simpan & daftarkan'}
-                </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                {draft.profileId ? (
+                  <button
+                    type="button"
+                    className="kc-btn kc-btn-danger"
+                    onClick={() => {
+                      const target = interns.find((i) => i.id === draft.profileId);
+                      if (target) removeIntern(target);
+                    }}
+                    disabled={saving}
+                  >
+                    <i className="fa-solid fa-trash-can" aria-hidden="true"></i> Hapus peserta
+                  </button>
+                ) : <span />}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className="kc-btn" onClick={() => setDraft(null)}>Batal</button>
+                  <button type="submit" className="kc-btn kc-btn-primary" disabled={saving}>
+                    {saving ? 'Menyimpan…' : draft.profileId ? 'Simpan perubahan' : 'Simpan & daftarkan'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

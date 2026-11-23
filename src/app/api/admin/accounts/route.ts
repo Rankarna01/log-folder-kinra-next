@@ -18,7 +18,7 @@ const NIK_RE = /^\d+$/;
 
 type Kind = 'mentor' | 'participant';
 type Body = {
-  action?: 'create' | 'update' | 'assign';
+  action?: 'create' | 'update' | 'assign' | 'delete';
   profileIds?: string[];
   profileId?: string;
   kind?: Kind;
@@ -131,6 +131,49 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // ---- hapus akun (peserta / mentor) beserta seluruh riwayat logbook dan lampirannya
+  if (body.action === 'delete') {
+    if (!body.profileId) return NextResponse.json({ error: 'ID profil wajib diisi.' }, { status: 400 });
+
+    const { data: target } = await admin.from('profiles').select('id, name, role').eq('id', body.profileId).maybeSingle();
+    if (!target) {
+      // Coba bersihkan juga dari auth jika ada
+      await admin.auth.admin.deleteUser(body.profileId).catch(() => {});
+      return NextResponse.json({ ok: true });
+    }
+
+    if (target.role === 'admin') {
+      return NextResponse.json({ error: 'Akun super admin tidak dapat dihapus.' }, { status: 403 });
+    }
+
+    // Bersihkan berkas lampiran foto/file logbook dari Supabase Storage jika ada
+    try {
+      const { data: logs } = await admin.from('logbooks').select('id').eq('user_id', body.profileId);
+      const logIds = (logs || []).map((l) => l.id);
+      if (logIds.length > 0) {
+        const { data: atts } = await admin.from('attachments').select('file_path').in('logbook_id', logIds);
+        const paths = (atts || []).map((a) => a.file_path).filter(Boolean);
+        if (paths.length > 0) {
+          await admin.storage.from('logbook-photos').remove(paths);
+        }
+      }
+    } catch {
+      // Abaikan jika pembersihan storage gagal, tetap lanjutkan penghapusan akun
+    }
+
+    // Hapus dari auth.users (secara cascade foreign key akan menghapus profiles, logbooks, attachments)
+    const { error: authErr } = await admin.auth.admin.deleteUser(body.profileId);
+    if (authErr && !authErr.message.toLowerCase().includes('not found')) {
+      const { error: profErr } = await admin.from('profiles').delete().eq('id', body.profileId);
+      if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 });
+    } else {
+      // Pastikan baris profile juga terhapus jika auth user tidak terikat
+      await admin.from('profiles').delete().eq('id', body.profileId);
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
   // ---- daftarkan akun baru (login dengan NIK; email hanya kontak)
   const kind: Kind = body.kind === 'mentor' ? 'mentor' : 'participant';
   const name = (body.name ?? '').trim();
@@ -188,4 +231,24 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ ok: true, identifier: nik });
+}
+
+export async function DELETE(req: Request) {
+  const url = new URL(req.url);
+  let profileId = url.searchParams.get('profileId') || url.searchParams.get('id');
+  if (!profileId) {
+    const json = (await req.json().catch(() => null)) as { profileId?: string; id?: string } | null;
+    profileId = json?.profileId || json?.id || null;
+  }
+  if (!profileId) {
+    return NextResponse.json({ error: 'ID profil wajib diisi.' }, { status: 400 });
+  }
+
+  // Gunakan alur POST dengan action 'delete'
+  const mockReq = new Request(req.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'delete', profileId }),
+  });
+  return POST(mockReq);
 }

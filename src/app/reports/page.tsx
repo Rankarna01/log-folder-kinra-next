@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { PageHead, StatTiles, StatTile, Skeleton } from '@/components/ui/Kit';
 import { useToast } from '@/components/feedback/FeedbackProvider';
-import { useConfirm } from '@/components/feedback/ConfirmProvider';
 import { ReportSheet, fmtLong, parseIso, toIso } from '@/components/reports/ReportSheet';
-import { TemplateEditor } from '@/components/reports/TemplateEditor';
 import { TemplateCards, type TemplateCardItem } from '@/components/reports/TemplateCards';
 import { DEFAULT_TEMPLATE, normalizeTemplate, weekNumberOfMonth, type TemplateConfig } from '@/lib/reports/template';
 import type { Logbook, Profile } from '@/types/database';
@@ -20,9 +19,9 @@ const todayIso = () => toIso(new Date());
 const mondayOf = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
 
 export default function ReportsPage() {
+  const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
-  const confirm = useConfirm();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [logs, setLogs] = useState<Logbook[]>([]);
@@ -36,8 +35,15 @@ export default function ReportsPage() {
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [templatesReady, setTemplatesReady] = useState(true);
   const [activeKey, setActiveKey] = useState<string>('standar');
-  const [editing, setEditing] = useState<{ key: string; name: string; config: TemplateConfig } | null>(null);
-  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const qTab = new URLSearchParams(window.location.search).get('tab');
+      if (qTab === 'template' || qTab === 'rentang' || qTab === 'mingguan') {
+        setTab(qTab);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -120,81 +126,17 @@ export default function ReportsPage() {
 
   const openEditor = (key: string) => {
     if (key === 'standar') {
-      // Template bawaan tidak diubah: buka sebagai salinan baru
-      setEditing({ key: 'new', name: 'Salinan Standar', config: cloneDefault() });
-      return;
+      router.push('/reports/templates/new?from=standar');
+    } else {
+      router.push(`/reports/templates/${key}`);
     }
-    const found = templates.find((t) => t.id === key);
-    if (found) setEditing({ key: found.id, name: found.name, config: found.config });
   };
 
-  const newTemplate = () => setEditing({ key: 'new', name: '', config: cloneDefault() });
+  const newTemplate = () => {
+    router.push('/reports/templates/new');
+  };
 
   const activate = (key: string, on: boolean) => setActiveKey(on ? key : 'standar');
-
-  const saveEditing = async () => {
-    if (!editing) return;
-    const name = editing.name.trim();
-    if (!name) {
-      toast.warning('Isi nama template dulu sebelum menyimpan.', 'Nama template kosong');
-      return;
-    }
-    setSaving(true);
-    if (editing.key === 'new') {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setSaving(false);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('report_templates')
-        .insert({ user_id: user.id, name, config: editing.config })
-        .select('id,name,config')
-        .single();
-      setSaving(false);
-      if (error || !data) {
-        toast.error(error?.message ?? 'Template belum bisa disimpan.', 'Gagal menyimpan');
-        return;
-      }
-      setTemplates((list) => [...list, { id: data.id, name: data.name, config: normalizeTemplate(data.config) }]);
-      setActiveKey(data.id);
-      setEditing(null);
-      toast.success(`Template "${name}" disimpan dan dipakai untuk cetak.`);
-      return;
-    }
-    const { error } = await supabase
-      .from('report_templates')
-      .update({ name, config: editing.config, updated_at: new Date().toISOString() })
-      .eq('id', editing.key);
-    setSaving(false);
-    if (error) {
-      toast.error(error.message, 'Gagal memperbarui');
-      return;
-    }
-    setTemplates((list) => list.map((t) => (t.id === editing.key ? { ...t, name, config: editing.config } : t)));
-    setEditing(null);
-    toast.success('Template diperbarui.');
-  };
-
-  const deleteEditing = async () => {
-    if (!editing || editing.key === 'new') return;
-    if (!(await confirm({ message: 'Template ini akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.', confirmLabel: 'Hapus template', danger: true }))) return;
-    setSaving(true);
-    const { error } = await supabase.from('report_templates').delete().eq('id', editing.key);
-    setSaving(false);
-    if (error) {
-      toast.error(error.message, 'Gagal menghapus');
-      return;
-    }
-    setTemplates((list) => list.filter((t) => t.id !== editing.key));
-    if (activeKey === editing.key) setActiveKey('standar');
-    setEditing(null);
-    toast.info('Template dihapus.');
-  };
-
-  const previewConfig = editing ? editing.config : activeConfig;
 
   const tabBtn = (key: Tab, label: string) => {
     const active = tab === key;
@@ -287,25 +229,14 @@ export default function ReportsPage() {
           <TemplateCards
             items={cardItems}
             activeKey={activeKey}
-            editingKey={editing?.key ?? null}
+            editingKey={null}
             onActivate={activate}
             onEdit={openEditor}
             onNew={newTemplate}
           />
-          {editing && (
-            <TemplateEditor
-              name={editing.name}
-              onNameChange={(name) => setEditing((e) => (e ? { ...e, name } : e))}
-              draft={editing.config}
-              onChange={(config) => setEditing((e) => (e ? { ...e, config } : e))}
-              isNew={editing.key === 'new'}
-              saving={saving}
-              onSave={saveEditing}
-              onCancel={() => setEditing(null)}
-              onDelete={editing.key === 'new' ? null : deleteEditing}
-            />
-          )}
-          <p className="kc-eyebrow" style={{ margin: 0 }}>Pratinjau {editing ? '(sedang diedit)' : '(template aktif, minggu berjalan)'}</p>
+          <p className="kc-eyebrow" style={{ margin: 0 }}>
+            Pratinjau (template aktif, minggu berjalan)
+          </p>
         </div>
       )}
 
@@ -313,7 +244,7 @@ export default function ReportsPage() {
         <Skeleton height={420} />
       ) : tab === 'rentang' && !range.valid ? null : (
         <ReportSheet
-          config={tab === 'template' ? previewConfig : activeConfig}
+          config={activeConfig}
           profile={profile}
           logs={periodLogs}
           days={active.days}

@@ -285,7 +285,43 @@ html[data-theme="dark"] .auth-split {
   padding: 72px 64px;
   background: var(--a-page);
 }
-.auth-panel-inner { width: 100%; max-width: 440px; margin: 0 auto; }
+.auth-panel-inner { width: 100%; max-width: 440px; margin: 0 auto; transition: max-width 0.2s ease; }
+.auth-panel-inner.auth-panel-wide { max-width: 620px; }
+
+/* Tab masuk / daftar rapat */
+.auth-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--a-surface-2);
+  border: 1px solid var(--a-line-2);
+  margin-bottom: 20px;
+}
+.auth-tab {
+  height: 38px;
+  padding: 0 20px;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  color: var(--a-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.auth-tab:hover {
+  color: var(--a-ink);
+}
+.auth-tab[aria-selected="true"],
+.auth-tab.active {
+  background: linear-gradient(135deg, #008187, #00666b);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 129, 135, 0.25);
+}
 
 .auth-theme {
   position: absolute;
@@ -327,7 +363,8 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
   box-shadow: 0 0 0 4px rgba(0, 129, 135, 0.18);
 }
 .auth-split .input-wrap > i { width: 44px; text-align: center; font-size: 14px; color: var(--a-muted); }
-.auth-split .input-wrap input {
+.auth-split .input-wrap input,
+.auth-split .input-wrap select {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -336,10 +373,15 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
   background: transparent;
   color: var(--a-ink);
   font: inherit;
-  font-size: 16px; /* cegah zoom otomatis iOS */
+  font-size: 15px;
+}
+.auth-split .input-wrap select {
+  cursor: pointer;
+  padding-right: 14px;
 }
 .auth-split .input-wrap input::placeholder { color: var(--a-muted); }
-.auth-split .input-wrap input:focus { box-shadow: none; }
+.auth-split .input-wrap input:focus,
+.auth-split .input-wrap select:focus { box-shadow: none; }
 .input-eye {
   width: 44px;
   height: 100%;
@@ -349,6 +391,25 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
   cursor: pointer;
 }
 .input-eye:hover { color: var(--a-ink); }
+
+/* Layout 2 kolom untuk registrasi */
+.auth-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 14px;
+}
+.auth-col-full {
+  grid-column: span 2;
+}
+@media (max-width: 640px) {
+  .auth-grid-2 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .auth-col-full {
+    grid-column: span 1;
+  }
+}
 
 .btn-masuk {
   height: 52px;

@@ -8,6 +8,7 @@ type Props = {
   brandTitle: string;
   brandText: string;
   children: React.ReactNode;
+  wide?: boolean;
 };
 
 const THEME_COOKIE = 'kinra_tema';
@@ -33,7 +34,7 @@ function ThemeToggle() {
   );
 }
 
-export function AuthShell({ brandEyebrow, brandTitle, brandText, children }: Props) {
+export function AuthShell({ brandEyebrow, brandTitle, brandText, children, wide }: Props) {
   return (
     <div className="auth-split">
       <aside className="auth-brand">
@@ -55,7 +56,7 @@ export function AuthShell({ brandEyebrow, brandTitle, brandText, children }: Pro
 
       <section className="auth-panel">
         <ThemeToggle />
-        <div className="auth-panel-inner">{children}</div>
+        <div className={`auth-panel-inner${wide ? ' auth-panel-wide' : ''}`}>{children}</div>
       </section>
     </div>
   );

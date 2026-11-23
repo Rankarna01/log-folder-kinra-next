@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { homeForRole, roleFromEmail } from '@/lib/auth/roles';
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
 import { AuthShell, AuthField } from '@/components/AuthShell';
+import { RegisterForm } from '@/components/auth/RegisterForm';
 
 const EMAIL_KEY = 'kinra_last_email';
 
@@ -55,6 +56,12 @@ export default function LoginPage() {
   const [loginEmail, setLoginEmail] = useState('');
 
   const [step, setStep] = useState<Step>('password');
+  const [tab, setTab] = useState<'masuk' | 'daftar'>('masuk');
+
+  const switchTab = (next: 'masuk' | 'daftar') => {
+    setTab(next);
+    setErrorMsg('');
+  };
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -172,21 +179,44 @@ export default function LoginPage() {
       brandEyebrow="Timesheet KINRA"
       brandTitle="Logbook harian peserta magang."
       brandText="Catat kegiatan, ajukan ke mentor, dan pantau persetujuan dalam satu tempat."
+      wide={tab === 'daftar'}
     >
-      <p className="eyebrow auth-eyebrow">Masuk</p>
-      <h1 className="auth-title">{step === 'create' ? 'Buat kata sandi Anda' : 'Masuk ke akun Anda'}</h1>
-      <p className="auth-lead">
-        {step === 'create'
-          ? 'Pertama kali masuk. Buat kata sandi, lalu ulangi sekali lagi untuk memastikan.'
-          : 'Peserta dan mentor masuk dengan NIK. Admin masuk dengan ID.'}
-      </p>
-
       {errorMsg && (
         <div className="auth-alert auth-alert-error" role="alert">
           <i className="fa-solid fa-circle-xmark" aria-hidden="true"></i>
           <span>{errorMsg}</span>
         </div>
       )}
+
+      <div className="auth-tabs" role="tablist" aria-label="Pilihan masuk atau daftar">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'masuk'}
+          onClick={() => switchTab('masuk')}
+          className={`auth-tab ${tab === 'masuk' ? 'active' : ''}`}
+        >
+          Masuk
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'daftar'}
+          onClick={() => switchTab('daftar')}
+          className={`auth-tab ${tab === 'daftar' ? 'active' : ''}`}
+        >
+          Daftar
+        </button>
+      </div>
+
+      {tab === 'masuk' && (
+        <>
+      <h1 className="auth-title">{step === 'create' ? 'Buat kata sandi Anda' : 'Masuk ke akun Anda'}</h1>
+      <p className="auth-lead">
+        {step === 'create'
+          ? 'Pertama kali masuk. Buat kata sandi, lalu ulangi sekali lagi untuk memastikan.'
+          : 'Peserta dan mentor masuk dengan NIK. Admin masuk dengan ID.'}
+      </p>
 
       <form onSubmit={handleSubmit} className="auth-form">
         <input type="text" name="username" value={email.trim()} autoComplete="username" readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
@@ -201,6 +231,17 @@ export default function LoginPage() {
           {loading ? 'Memproses…' : step === 'create' ? 'Simpan dan masuk' : 'Masuk'}
         </button>
       </form>
+
+        </>
+      )}
+
+      {tab === 'daftar' && (
+        <>
+          <h1 className="auth-title">Daftar anak magang</h1>
+          <p className="auth-lead">Isi data diri dan pilih mentor pembimbing. Setelah daftar, Anda langsung masuk.</p>
+          <RegisterForm onRegistered={({ identifier, email: authEmail, password: pass }) => finishLogin(authEmail, pass, identifier)} />
+        </>
+      )}
 
       <p className="auth-foot">PT Kawasan Industri Nusantara · KEK Sei Mangkei</p>
     </AuthShell>

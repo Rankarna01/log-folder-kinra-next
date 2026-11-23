@@ -285,30 +285,8 @@ export function TopBar({
   const collapsed = useSidebarCollapsed();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [isDark, setIsDark] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
-
-  // Sinkronisasi status dark mode dari DOM / cookie
-  useEffect(() => {
-    const checkDark = () => {
-      const root = document.documentElement;
-      const explicit = root.getAttribute('data-theme');
-      setIsDark(
-        explicit === 'dark' ||
-          (explicit !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-      );
-    };
-    checkDark();
-  }, []);
-
-  const toggleTheme = () => {
-    const root = document.documentElement;
-    const next = isDark ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    document.cookie = `kinra_tema=${next}; path=/; max-age=31536000; samesite=lax`;
-    setIsDark(!isDark);
-  };
 
   // Tutup dropdown saat klik di luar
   useEffect(() => {
@@ -440,17 +418,6 @@ export function TopBar({
             </div>
           )}
         </div>
-
-        {/* Tombol Tema Gelap/Terang */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-zinc-200/90 shadow-2xs flex items-center justify-center text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 transition cursor-pointer"
-          aria-label={isDark ? 'Beralih ke tema terang' : 'Beralih ke tema gelap'}
-          title={isDark ? 'Beralih ke tema terang' : 'Beralih ke tema gelap'}
-        >
-          <i className={`fa-regular ${isDark ? 'fa-sun text-amber-500' : 'fa-moon'} text-sm`} aria-hidden="true"></i>
-        </button>
 
         {/* Divider Vertikal */}
         <div className="h-6 w-px bg-zinc-300/80 mx-1 hidden sm:block" aria-hidden="true" />

@@ -503,132 +503,81 @@ export function FloatingDock({
 }) {
   const pathname = usePathname();
 
-  const isHome = pathname === '/dashboard' || pathname === '/';
-  const isCalendar = pathname.startsWith('/logbook');
-  const isReports = pathname.startsWith('/reports');
-  const isProfile = pathname.startsWith('/profile');
-  const isMentor = pathname === '/mentor';
-  const isAdmin = pathname === '/admin';
+  type NavItem = {
+    href: string;
+    label: string;
+    icon: string;
+    activeIcon?: string;
+    isActive: boolean;
+  };
+
+  let items: NavItem[] = [];
+
+  if (userRole === 'participant') {
+    const isHome = pathname === '/dashboard' || pathname === '/';
+    const isCalendar = pathname.startsWith('/logbook');
+    const isReports = pathname.startsWith('/reports');
+    const isProfile = pathname.startsWith('/profile');
+
+    items = [
+      { href: '/dashboard', label: 'Home', icon: 'fa-solid fa-house', isActive: isHome },
+      { href: '/logbook', label: 'Logbook', icon: 'fa-regular fa-calendar-days', activeIcon: 'fa-solid fa-calendar-days', isActive: isCalendar },
+      { href: '/reports', label: 'Laporan', icon: 'fa-solid fa-file-pdf', isActive: isReports },
+      { href: '/profile', label: 'Profil', icon: 'fa-regular fa-user', activeIcon: 'fa-solid fa-user', isActive: isProfile },
+    ];
+  } else if (userRole === 'mentor') {
+    const isMentor = pathname === '/mentor';
+    const isReview = pathname === '/mentor/review';
+    const isInterns = pathname === '/mentor/interns';
+    const isProfile = pathname.startsWith('/profile');
+
+    items = [
+      { href: '/mentor', label: 'Home', icon: 'fa-solid fa-chart-line', isActive: isMentor },
+      { href: '/mentor/review', label: 'Review', icon: 'fa-solid fa-clipboard-check', isActive: isReview },
+      { href: '/mentor/interns', label: 'Magang', icon: 'fa-solid fa-users', isActive: isInterns },
+      { href: '/profile', label: 'Profil', icon: 'fa-regular fa-user', activeIcon: 'fa-solid fa-user', isActive: isProfile },
+    ];
+  } else if (userRole === 'admin') {
+    const isAdmin = pathname === '/admin';
+    const isInterns = pathname === '/admin/interns';
+    const isMentors = pathname === '/admin/mentors';
+    const isDivisions = pathname === '/admin/divisions';
+    const isProfile = pathname.startsWith('/profile');
+
+    items = [
+      { href: '/admin', label: 'Admin', icon: 'fa-solid fa-chart-pie', isActive: isAdmin },
+      { href: '/admin/interns', label: 'Magang', icon: 'fa-solid fa-user-graduate', isActive: isInterns },
+      { href: '/admin/mentors', label: 'Mentor', icon: 'fa-solid fa-chalkboard-user', isActive: isMentors },
+      { href: '/admin/divisions', label: 'Divisi', icon: 'fa-solid fa-sitemap', isActive: isDivisions },
+      { href: '/profile', label: 'Profil', icon: 'fa-regular fa-user', activeIcon: 'fa-solid fa-user', isActive: isProfile },
+    ];
+  }
 
   return (
     <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[420px] w-[calc(100%-2rem)] md:hidden">
-      <div className="bg-white/95 backdrop-blur-md rounded-[32px] p-2 shadow-xl border border-zinc-200/80 flex items-center justify-between gap-1">
-        <div className="flex items-center gap-1 flex-1 justify-around">
-          {userRole === 'participant' && (<>
-          <Link
-            href="/dashboard"
-            aria-label="Dashboard"
-            className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-              isHome ? 'bg-[#0B6E6C] text-white shadow-xs' : 'text-zinc-500 hover:text-[#0B6E6C]'
-            }`}
-          >
-            <i className="fa-solid fa-house text-sm"></i>
-          </Link>
-
-          <Link
-            href="/logbook"
-            aria-label="Kalender Logbook"
-            className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-              isCalendar ? 'bg-[#0B6E6C] text-white shadow-xs' : 'text-zinc-500 hover:text-[#0B6E6C]'
-            }`}
-          >
-            <i className="fa-regular fa-calendar-days text-sm"></i>
-          </Link>
-          </>)}
-
-          {/* Quick link to Mentor portal if mentor */}
-          {userRole === 'mentor' && (
+      <div className="bg-[#181920]/95 backdrop-blur-xl rounded-full p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.5)] border border-white/10 flex items-center justify-between gap-1">
+        {items.map((item) => {
+          const iconClass = item.isActive && item.activeIcon ? item.activeIcon : item.icon;
+          return (
             <Link
-              href="/mentor"
-              aria-label="Dashboard Mentor"
-              className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-                isMentor ? 'bg-amber-600 text-white shadow-xs' : 'text-zinc-500 hover:text-amber-700'
+              key={item.href}
+              href={item.href}
+              aria-label={item.label}
+              className={`flex items-center justify-center gap-2 h-11 transition-all duration-300 ease-out select-none ${
+                item.isActive
+                  ? 'bg-white text-zinc-900 rounded-full px-4 shadow-md font-bold'
+                  : 'text-white/60 hover:text-white px-3 rounded-full hover:bg-white/10 active:scale-95'
               }`}
             >
-              <i className="fa-solid fa-chart-line text-sm"></i>
+              <i className={`${iconClass} ${item.isActive ? 'text-zinc-900 text-sm' : 'text-base'}`} aria-hidden="true"></i>
+              {item.isActive && (
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap animate-in fade-in duration-200">
+                  {item.label}
+                </span>
+              )}
             </Link>
-          )}
-          {userRole === 'mentor' && (
-            <Link
-              href="/mentor/review"
-              aria-label="Review Logbook"
-              className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-                pathname === '/mentor/review' ? 'bg-amber-600 text-white shadow-xs' : 'text-zinc-500 hover:text-amber-700'
-              }`}
-            >
-              <i className="fa-solid fa-clipboard-check text-sm"></i>
-            </Link>
-          )}
-          {userRole === 'mentor' && (
-            <Link
-              href="/mentor/interns"
-              aria-label="Anak Magang Bimbingan"
-              className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-                pathname === '/mentor/interns' ? 'bg-amber-600 text-white shadow-xs' : 'text-zinc-500 hover:text-amber-700'
-              }`}
-            >
-              <i className="fa-solid fa-users text-sm"></i>
-            </Link>
-          )}
-
-          {/* Quick link to Admin portal if admin */}
-          {userRole === 'admin' && (
-            <Link
-              href="/admin"
-              aria-label="Admin Portal"
-              className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-                isAdmin ? 'bg-purple-700 text-white shadow-xs' : 'text-zinc-500 hover:text-purple-700'
-              }`}
-            >
-              <i className="fa-solid fa-chart-pie text-sm"></i>
-            </Link>
-          )}
-          {userRole === 'admin' && (
-            <>
-              <Link
-                href="/admin/interns"
-                aria-label="Data Anak Magang"
-                className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-                  pathname === '/admin/interns' ? 'bg-purple-700 text-white shadow-xs' : 'text-zinc-500 hover:text-purple-700'
-                }`}
-              >
-                <i className="fa-solid fa-user-graduate text-sm"></i>
-              </Link>
-              <Link
-                href="/admin/mentors"
-                aria-label="Data Mentor"
-                className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-                  pathname === '/admin/mentors' ? 'bg-purple-700 text-white shadow-xs' : 'text-zinc-500 hover:text-purple-700'
-                }`}
-              >
-                <i className="fa-solid fa-chalkboard-user text-sm"></i>
-              </Link>
-            </>
-          )}
-
-          {userRole === 'participant' && (
-          <Link
-            href="/reports"
-            aria-label="Laporan PDF"
-            className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-              isReports ? 'bg-[#0B6E6C] text-white shadow-xs' : 'text-zinc-500 hover:text-[#0B6E6C]'
-            }`}
-          >
-            <i className="fa-solid fa-file-pdf text-sm"></i>
-          </Link>
-          )}
-
-          <Link
-            href="/profile"
-            aria-label="Profil Pengguna"
-            className={`flex flex-col items-center justify-center w-11 h-11 rounded-[18px] transition ${
-              isProfile ? 'bg-[#0B6E6C] text-white shadow-xs' : 'text-zinc-500 hover:text-[#0B6E6C]'
-            }`}
-          >
-            <i className="fa-regular fa-user text-sm"></i>
-          </Link>
-        </div>
-
+          );
+        })}
       </div>
     </nav>
   );

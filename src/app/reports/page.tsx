@@ -7,6 +7,7 @@ import { PageHead, StatTiles, StatTile, Skeleton } from '@/components/ui/Kit';
 import { useToast } from '@/components/feedback/FeedbackProvider';
 import { ReportSheet, fmtLong, parseIso, toIso } from '@/components/reports/ReportSheet';
 import { TemplateCards, type TemplateCardItem } from '@/components/reports/TemplateCards';
+import { DateRangeModal } from '@/components/reports/DateRangeModal';
 import { DEFAULT_TEMPLATE, normalizeTemplate, weekNumberOfMonth, type TemplateConfig } from '@/lib/reports/template';
 import type { Logbook, Profile } from '@/types/database';
 
@@ -35,6 +36,7 @@ export default function ReportsPage() {
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [templatesReady, setTemplatesReady] = useState(true);
   const [activeKey, setActiveKey] = useState<string>('standar');
+  const [showRangePicker, setShowRangePicker] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -197,22 +199,50 @@ export default function ReportsPage() {
         )}
 
         {tab === 'rentang' && (
-          <div className="kc-card-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <label className="kc-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              Dari
-              <input type="date" value={rangeStart} max={rangeEnd} onChange={(e) => e.target.value && setRangeStart(e.target.value)} className="kc-small" />
-            </label>
-            <label className="kc-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              Sampai
-              <input type="date" value={rangeEnd} min={rangeStart} max={todayIso()} onChange={(e) => e.target.value && setRangeEnd(e.target.value)} className="kc-small" />
-            </label>
-            <button type="button" className="kc-btn" onClick={() => { setRangeStart(toIso(mondayOf(new Date()))); setRangeEnd(todayIso()); }}>
-              Minggu ini
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Primary Date Range Trigger Button */}
+            <button
+              type="button"
+              onClick={() => setShowRangePicker(true)}
+              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-[14px] bg-white border border-zinc-200 hover:border-[#008187] text-[#0f2629] text-xs font-bold shadow-2xs hover:shadow-xs transition group cursor-pointer"
+            >
+              <i className="fa-regular fa-calendar-days text-[#008187] text-sm group-hover:scale-110 transition-transform"></i>
+              <span>{range.label}</span>
+              <span className="text-[11px] font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full">
+                {Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1} hari
+              </span>
+              <i className="fa-solid fa-chevron-down text-[10px] text-zinc-400 group-hover:text-[#008187] transition-colors ml-0.5"></i>
             </button>
-            <button type="button" className="kc-btn" onClick={() => { setRangeStart(toIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1))); setRangeEnd(todayIso()); }}>
-              Bulan ini
-            </button>
-            {!range.valid && <span className="kc-small kc-field-error">Rentang tidak valid: tanggal awal harus sebelum tanggal akhir (maks. 1 tahun).</span>}
+
+            {/* Quick shortcuts */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                className="kc-btn text-xs hover:border-[#008187] hover:text-[#008187]"
+                onClick={() => {
+                  setRangeStart(toIso(mondayOf(new Date())));
+                  setRangeEnd(todayIso());
+                }}
+              >
+                Minggu ini
+              </button>
+              <button
+                type="button"
+                className="kc-btn text-xs hover:border-[#008187] hover:text-[#008187]"
+                onClick={() => {
+                  setRangeStart(toIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+                  setRangeEnd(todayIso());
+                }}
+              >
+                Bulan ini
+              </button>
+            </div>
+
+            {!range.valid && (
+              <span className="kc-small kc-field-error">
+                Rentang tidak valid: tanggal awal harus sebelum tanggal akhir (maks. 1 tahun).
+              </span>
+            )}
           </div>
         )}
 
@@ -252,6 +282,17 @@ export default function ReportsPage() {
           kindText={tab === 'rentang' ? 'Rentang tanggal' : 'Mingguan'}
         />
       )}
+
+      <DateRangeModal
+        isOpen={showRangePicker}
+        onClose={() => setShowRangePicker(false)}
+        startDate={rangeStart}
+        endDate={rangeEnd}
+        onApply={(start, end) => {
+          setRangeStart(start);
+          setRangeEnd(end);
+        }}
+      />
     </div>
   );
 }

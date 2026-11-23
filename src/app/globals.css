@@ -77,33 +77,6 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) {
-    --page: #041214;
-    --surface: #0b1d20;
-    --surface-2: #10262a;
-    --surface-3: #163135;
-    --ink: #eef6f6;
-    --ink-2: #c2d3d4;
-    --muted: #86a0a2;
-    --brand: #3cc2c6;
-    --s1: #2a96d0;
-    --s2: #e0700f;
-    --s3: #6f8385;
-    --line: rgba(190, 240, 240, 0.08);
-    --line-2: rgba(190, 240, 240, 0.14);
-    --fg-rgb: 238, 246, 246;
-    --shadow-rgb: 0, 0, 0;
-    --txt-good: #6fd3a8;
-    --txt-bad: #ff8a80;
-    --good: #12b76a;
-    --warn: #fab219;
-    --serious: #ec835a;
-    --crit: #f04438;
-    color-scheme: dark;
-  }
-}
-
 @layer base {
   body {
     background-color: var(--page);
@@ -261,18 +234,6 @@ html[data-theme="dark"] .auth-split {
   color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) .auth-split {
-    --a-page: #041214; --a-surface: #0b1d20; --a-surface-2: #10262a; --a-surface-3: #163135;
-    --a-ink: #eef6f6; --a-ink-2: #c2d3d4; --a-muted: #86a0a2;
-    --a-line-2: rgba(190, 240, 240, 0.14);
-    --a-brand: #3cc2c6;
-    --a-crit-txt: #ff8a80; --a-crit: #f04438; --a-good-txt: #6fd3a8; --a-good: #12b76a;
-    --a-btn-shadow: rgba(0, 0, 0, 0.5);
-    color-scheme: dark;
-  }
-}
-
 .auth-split :focus-visible { outline: 2px solid var(--a-brand); outline-offset: 3px; border-radius: 6px; }
 
 /* Panel brand (Hijau Tosca) */
@@ -333,10 +294,6 @@ html[data-theme="dark"] .auth-split {
 .auth-theme .icon-sun { display: none; }
 html[data-theme="dark"] .auth-theme .icon-sun { display: inline; }
 html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
-@media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) .auth-theme .icon-sun { display: inline; }
-  html:not([data-theme="light"]) .auth-theme .icon-moon { display: none; }
-}
 
 .auth-eyebrow { margin: 0 0 12px; color: var(--a-brand) !important; font-weight: 500; letter-spacing: 0.16em; }
 .auth-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; }
@@ -642,6 +599,14 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
 .kc-req { color: var(--crit); }
 .kc-help { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
 .kc-field-error { margin: 6px 0 0; font-size: 12.5px; color: var(--txt-bad); display: flex; gap: 6px; align-items: flex-start; }
+.kc-input-error,
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: #f15a22 !important;
+  background-color: rgba(241, 90, 34, 0.04) !important;
+  box-shadow: 0 0 0 1px #f15a22 !important;
+}
 
 .kc-form { display: flex; flex-direction: column; gap: 14px; }
 .kc-field { display: flex; flex-direction: column; gap: 6px; }

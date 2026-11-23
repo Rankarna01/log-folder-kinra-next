@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/feedback/FeedbackProvider';
@@ -60,6 +60,8 @@ export default function AdminMentorsPage() {
   const [division, setDivision] = useState<string>('all');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [nikError, setNikError] = useState<string | null>(null);
+  const nikInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [people, setPeople] = useState<Profile[]>([]);
@@ -127,8 +129,12 @@ export default function AdminMentorsPage() {
     [mentors, pesertaByMentor, dupNames]
   );
 
-  const openNew = () => setDraft({ ...EMPTY_DRAFT, division: divisions[0] || '' });
-  const openEdit = (m: Mentor) =>
+  const openNew = () => {
+    setNikError(null);
+    setDraft({ ...EMPTY_DRAFT, division: divisions[0] || '' });
+  };
+  const openEdit = (m: Mentor) => {
+    setNikError(null);
     setDraft({
       id: m.id,
       name: m.name,
@@ -140,12 +146,42 @@ export default function AdminMentorsPage() {
       is_active: m.is_active,
       invite: true,
     });
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft) return;
-    setSaving(true);
+    setNikError(null);
 
+    const nik = draft.nik.trim();
+    if (!nik) {
+      setNikError('NIK wajib diisi.');
+      nikInputRef.current?.focus();
+      return;
+    }
+    if (!/^\d+$/.test(nik)) {
+      setNikError('NIK hanya boleh berisi angka.');
+      nikInputRef.current?.focus();
+      return;
+    }
+
+    const account = draft.id ? accountOf({ name: draft.name, email: draft.email }) : null;
+    const dupMentor = mentorAccounts.find(
+      (m) => m.nim_nik === nik && m.id !== account?.id
+    );
+    if (dupMentor) {
+      setNikError(`NIK sudah digunakan oleh mentor ${dupMentor.name}.`);
+      nikInputRef.current?.focus();
+      return;
+    }
+    const dupIntern = people.find((i) => i.nim_nik === nik);
+    if (dupIntern) {
+      setNikError(`NIK sudah digunakan oleh peserta magang ${dupIntern.name}.`);
+      nikInputRef.current?.focus();
+      return;
+    }
+
+    setSaving(true);
     const payload = {
       name: draft.name.trim(),
       division: draft.division || divisions[0] || '',
@@ -155,30 +191,7 @@ export default function AdminMentorsPage() {
       is_active: draft.is_active,
     };
 
-    if (draft.id) {
-      const { error } = await supabase.from('mentors').update(payload).eq('id', draft.id);
-      if (error) {
-        setSaving(false);
-        toast.error(error.message, 'Gagal menyimpan mentor');
-        return;
-      }
-    } else {
-      const { error } = await supabase.from('mentors').insert(payload);
-      if (error) {
-        setSaving(false);
-        toast.error(error.message ?? 'Mentor gagal ditambahkan', 'Gagal menyimpan mentor');
-        return;
-      }
-    }
-
-    const nik = draft.nik.trim();
-    if (!/^\d+$/.test(nik)) {
-      setSaving(false);
-      toast.warning('NIK wajib diisi dan hanya berisi angka.', 'NIK belum valid');
-      return;
-    }
     try {
-      const account = draft.id ? accountOf({ name: draft.name, email: draft.email }) : null;
       const common = {
         name: payload.name,
         email: payload.email,
@@ -187,25 +200,40 @@ export default function AdminMentorsPage() {
         phone: payload.phone,
         nimNik: nik,
       };
+
       if (account) {
         await postAccount({ action: 'update', profileId: account.id, ...common });
-        toast.success(`Data ${payload.name} diperbarui.`);
       } else {
-        const res = await postAccount({ action: 'create', kind: 'mentor', ...common });
-        toast.success(
-          res.status === 'exists'
-            ? `${payload.name} sudah punya akun. Data profilnya diperbarui.`
-            : `${payload.name} terdaftar. Mentor masuk dengan NIK dan membuat kata sandi di halaman login.`,
-          'Mentor ditambahkan'
-        );
+        await postAccount({ action: 'create', kind: 'mentor', ...common });
       }
-    } catch (err) {
-      toast.error((err as Error).message, 'Akun gagal disimpan');
-    }
 
-    setSaving(false);
-    setDraft(null);
-    setReloadKey((k) => k + 1);
+      if (draft.id) {
+        const { error } = await supabase.from('mentors').update(payload).eq('id', draft.id);
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await supabase.from('mentors').insert(payload);
+        if (error) throw new Error(error.message);
+      }
+
+      toast.success(
+        draft.id
+          ? `Data ${payload.name} diperbarui.`
+          : `${payload.name} terdaftar. Mentor masuk dengan NIK dan membuat kata sandi di halaman login.`,
+        draft.id ? 'Mentor diperbarui' : 'Mentor ditambahkan'
+      );
+      setDraft(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      const msg = (err as Error).message || '';
+      if (msg.toLowerCase().includes('nik') || msg.toLowerCase().includes('terdaftar')) {
+        setNikError(msg);
+        nikInputRef.current?.focus();
+      } else {
+        toast.error(msg, 'Gagal menyimpan mentor');
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleActive = async (m: Mentor) => {
@@ -367,9 +395,37 @@ export default function AdminMentorsPage() {
                 <input id="m-pos" value={draft.position} onChange={(e) => setDraft({ ...draft, position: e.target.value })} placeholder="Contoh: Manajer Operasional Kawasan KEK" />
               </div>
               <div className="kc-field">
-                <label htmlFor="m-nik">NIK <span className="kc-req">*</span></label>
-                <input id="m-nik" inputMode="numeric" required value={draft.nik} onChange={(e) => setDraft({ ...draft, nik: e.target.value.replace(/\D/g, '') })} placeholder="NIK (angka)" />
-                <p className="kc-help">NIK ini menjadi username login mentor.</p>
+                <label htmlFor="m-nik" className="flex items-center justify-between">
+                  <span>NIK <span className="kc-req">*</span></span>
+                  {nikError && (
+                    <span className="text-xs text-red-500 font-bold flex items-center gap-1">
+                      <i className="fa-solid fa-circle-exclamation"></i> {nikError}
+                    </span>
+                  )}
+                </label>
+                <input
+                  ref={nikInputRef}
+                  id="m-nik"
+                  inputMode="numeric"
+                  required
+                  value={draft.nik}
+                  onChange={(e) => {
+                    setDraft({ ...draft, nik: e.target.value.replace(/\D/g, '') });
+                    if (nikError) setNikError(null);
+                  }}
+                  placeholder="NIK (angka)"
+                  className={nikError ? 'kc-input-error' : ''}
+                  aria-invalid={!!nikError}
+                />
+                <p className={`kc-help ${nikError ? 'text-red-500 font-medium' : ''}`}>
+                  {nikError ? (
+                    <span className="flex items-center gap-1 text-red-500">
+                      <i className="fa-solid fa-triangle-exclamation"></i> {nikError}
+                    </span>
+                  ) : (
+                    'NIK ini menjadi username login mentor. Harus unik dan hanya angka.'
+                  )}
+                </p>
               </div>
               <div className="kc-field">
                 <label htmlFor="m-mail">Email kontak (opsional)</label>

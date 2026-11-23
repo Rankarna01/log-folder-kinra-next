@@ -46,7 +46,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const saved = (await cookies()).get('kinra_tema')?.value;
-  const theme = saved === 'dark' || saved === 'light' ? saved : undefined;
+  const theme = saved === 'dark' ? 'dark' : 'light';
 
   return (
     <html

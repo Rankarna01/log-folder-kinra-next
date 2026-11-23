@@ -98,14 +98,15 @@ export async function POST(req: Request) {
     if (hasNik) {
       const nik = (body.nimNik ?? '').trim();
       if (body.nimNik !== undefined) {
+        if (!nik) return NextResponse.json({ error: 'NIK wajib diisi.' }, { status: 400 });
         if (!NIK_RE.test(nik)) return NextResponse.json({ error: 'NIK wajib diisi dan hanya berisi angka.' }, { status: 400 });
         const { data: dup } = await admin
           .from('profiles')
-          .select('id')
+          .select('id, name')
           .eq('nim_nik', nik)
           .neq('id', body.profileId)
           .maybeSingle();
-        if (dup) return NextResponse.json({ error: 'NIK ini sudah dipakai peserta lain.' }, { status: 409 });
+        if (dup) return NextResponse.json({ error: `NIK ${nik} sudah terdaftar (${dup.name || 'pengguna lain'}).` }, { status: 409 });
         // Email login peserta mengikuti NIK
         const { error: authErr } = await admin.auth.admin.updateUserById(body.profileId, {
           email: nikLoginEmail(nik),
@@ -136,36 +137,30 @@ export async function POST(req: Request) {
   if (!name) return NextResponse.json({ error: 'Nama wajib diisi.' }, { status: 400 });
 
   const nik = (body.nimNik ?? '').trim();
+  if (!nik) return NextResponse.json({ error: 'NIK wajib diisi.' }, { status: 400 });
   if (!NIK_RE.test(nik)) return NextResponse.json({ error: 'NIK wajib diisi dan hanya berisi angka.' }, { status: 400 });
   if (contact && !EMAIL_RE.test(contact)) return NextResponse.json({ error: 'Format email tidak valid.' }, { status: 400 });
-  const { data: dup } = await admin.from('profiles').select('id').eq('nim_nik', nik).maybeSingle();
-  if (dup) return NextResponse.json({ error: 'NIK ini sudah terdaftar.' }, { status: 409 });
+  const { data: dup } = await admin.from('profiles').select('id, name').eq('nim_nik', nik).maybeSingle();
+  if (dup) return NextResponse.json({ error: `NIK ${nik} sudah terdaftar (${dup.name || 'pengguna lain'}).` }, { status: 409 });
   const loginEmail = nikLoginEmail(nik);
 
   const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (listErr) return NextResponse.json({ error: listErr.message }, { status: 500 });
   const existing = list.users.find((u) => (u.email ?? '').toLowerCase() === loginEmail);
 
-  let userId = existing?.id;
-  let status: 'created' | 'exists' = 'created';
-
   if (existing) {
-    const { data: prof } = await admin.from('profiles').select('role').eq('id', existing.id).maybeSingle();
-    if (prof?.role === 'admin') {
-      return NextResponse.json({ error: 'Data ini milik akun super admin.' }, { status: 409 });
-    }
-    status = 'exists';
-  } else {
-    const { data, error } = await admin.auth.admin.createUser({
-      email: loginEmail,
-      email_confirm: true,
-      user_metadata: { name, pending_activation: true },
-    });
-    if (error || !data.user) {
-      return NextResponse.json({ error: error?.message ?? 'Akun gagal dibuat.' }, { status: 500 });
-    }
-    userId = data.user.id;
+    return NextResponse.json({ error: `NIK ${nik} sudah terdaftar di sistem login.` }, { status: 409 });
   }
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email: loginEmail,
+    email_confirm: true,
+    user_metadata: { name, pending_activation: true },
+  });
+  if (error || !data.user) {
+    return NextResponse.json({ error: error?.message ?? 'Akun gagal dibuat.' }, { status: 500 });
+  }
+  const userId = data.user.id;
 
   const profile: Record<string, unknown> = {
     id: userId,
@@ -190,5 +185,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: dupKey ? 'NIK ini sudah terdaftar.' : profErr.message }, { status: dupKey ? 409 : 500 });
   }
 
-  return NextResponse.json({ ok: true, status, identifier: nik });
+  return NextResponse.json({ ok: true, identifier: nik });
 }

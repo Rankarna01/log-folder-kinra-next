@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/feedback/FeedbackProvider';
@@ -44,6 +44,8 @@ export default function AdminInternsPage() {
   const [query, setQuery] = useState('');
   const [mentorFilter, setMentorFilter] = useState('all');
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [nikError, setNikError] = useState<string | null>(null);
+  const nikInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -85,7 +87,8 @@ export default function AdminInternsPage() {
 
   const withMentor = interns.filter((p) => p.mentor_id).length;
 
-  const openNew = () =>
+  const openNew = () => {
+    setNikError(null);
     setDraft({
       name: '',
       email: '',
@@ -95,8 +98,10 @@ export default function AdminInternsPage() {
       phone: '',
       mentorId: activeMentors[0]?.id || '',
     });
+  };
 
-  const openEdit = (p: Profile) =>
+  const openEdit = (p: Profile) => {
+    setNikError(null);
     setDraft({
       profileId: p.id,
       name: p.name,
@@ -107,10 +112,32 @@ export default function AdminInternsPage() {
       phone: p.phone || '',
       mentorId: p.mentor_id || '',
     });
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft) return;
+    setNikError(null);
+
+    const nik = draft.nimNik.trim();
+    if (!nik) {
+      setNikError('NIK wajib diisi.');
+      nikInputRef.current?.focus();
+      return;
+    }
+    if (!/^\d+$/.test(nik)) {
+      setNikError('NIK hanya boleh berisi angka.');
+      nikInputRef.current?.focus();
+      return;
+    }
+
+    const dup = interns.find((p) => p.nim_nik === nik && p.id !== draft.profileId);
+    if (dup) {
+      setNikError(`NIK sudah digunakan oleh peserta ${dup.name}.`);
+      nikInputRef.current?.focus();
+      return;
+    }
+
     const mentor = activeMentors.find((m) => m.id === draft.mentorId);
     if (!mentor) {
       toast.warning('Pilih mentor pembimbing.');
@@ -121,7 +148,7 @@ export default function AdminInternsPage() {
       if (draft.profileId) {
         await postAccount({
           action: 'update',
-          nimNik: draft.nimNik.trim(),
+          nimNik: nik,
           email: draft.email.trim().toLowerCase(),
           profileId: draft.profileId,
           name: draft.name.trim(),
@@ -133,29 +160,33 @@ export default function AdminInternsPage() {
         });
         toast.success(`Data ${draft.name.trim()} diperbarui.`);
       } else {
-        const res = await postAccount({
+        await postAccount({
           action: 'create',
           kind: 'participant',
           name: draft.name.trim(),
           email: draft.email.trim().toLowerCase(),
           division: draft.division,
           position: draft.position.trim(),
-          nimNik: draft.nimNik.trim(),
+          nimNik: nik,
           phone: draft.phone.trim(),
           mentorId: mentor.id,
           mentorName: mentor.name,
         });
         toast.success(
-          res.status === 'exists'
-            ? 'NIK ini sudah terdaftar. Data profilnya diperbarui.'
-            : `${draft.name.trim()} terdaftar. Peserta masuk dengan NIK di halaman login.`,
+          `${draft.name.trim()} terdaftar. Peserta masuk dengan NIK di halaman login.`,
           'Anak magang ditambahkan'
         );
       }
       setDraft(null);
       setReloadKey((k) => k + 1);
     } catch (err) {
-      toast.error((err as Error).message, 'Gagal menyimpan');
+      const msg = (err as Error).message || '';
+      if (msg.toLowerCase().includes('nik') || msg.toLowerCase().includes('terdaftar')) {
+        setNikError(msg);
+        nikInputRef.current?.focus();
+      } else {
+        toast.error(msg, 'Gagal menyimpan');
+      }
     } finally {
       setSaving(false);
     }
@@ -243,16 +274,37 @@ export default function AdminInternsPage() {
                 <input id="i-name" required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Contoh: Muhammad Randy Karna" />
               </div>
               <div className="kc-field">
-                <label htmlFor="i-nik">NIK <span className="kc-req">*</span></label>
+                <label htmlFor="i-nik" className="flex items-center justify-between">
+                  <span>NIK <span className="kc-req">*</span></span>
+                  {nikError && (
+                    <span className="text-xs text-red-500 font-bold flex items-center gap-1">
+                      <i className="fa-solid fa-circle-exclamation"></i> {nikError}
+                    </span>
+                  )}
+                </label>
                 <input
+                  ref={nikInputRef}
                   id="i-nik"
                   inputMode="numeric"
                   required
                   value={draft.nimNik}
-                  onChange={(e) => setDraft({ ...draft, nimNik: e.target.value.replace(/\D/g, '') })}
+                  onChange={(e) => {
+                    setDraft({ ...draft, nimNik: e.target.value.replace(/\D/g, '') });
+                    if (nikError) setNikError(null);
+                  }}
                   placeholder="NIK (angka)"
+                  className={nikError ? 'kc-input-error' : ''}
+                  aria-invalid={!!nikError}
                 />
-                <p className="kc-help">NIK ini menjadi username login peserta. Harus unik dan hanya angka.</p>
+                <p className={`kc-help ${nikError ? 'text-red-500 font-medium' : ''}`}>
+                  {nikError ? (
+                    <span className="flex items-center gap-1 text-red-500">
+                      <i className="fa-solid fa-triangle-exclamation"></i> {nikError}
+                    </span>
+                  ) : (
+                    'NIK ini menjadi username login peserta. Harus unik dan hanya angka.'
+                  )}
+                </p>
               </div>
               <div className="kc-field">
                 <label htmlFor="i-mail">Email kontak (opsional)</label>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { PageHead, StatTiles, StatTile, Skeleton } from '@/components/ui/Kit';
@@ -47,8 +47,9 @@ export default function ReportsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    async function loadData() {
+  const loadData = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -71,9 +72,30 @@ export default function ReportsPage() {
         setTemplates((tpls ?? []).map((t) => ({ id: t.id, name: t.name, config: normalizeTemplate(t.config) })));
       }
       setLoading(false);
-    }
+    },
+    [supabase]
+  );
+
+  useEffect(() => {
     loadData();
-  }, [supabase]);
+  }, [loadData]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadData(true);
+      }
+    };
+    const handleFocus = () => {
+      loadData(true);
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [loadData]);
 
   // Periode mingguan: Senin–Minggu dari tanggal jangkar
   const week = useMemo(() => {
@@ -165,9 +187,26 @@ export default function ReportsPage() {
         title="Cetak laporan"
         lead="Pilih periode dan template, lalu cetak atau simpan sebagai PDF."
         actions={
-          <button type="button" className="kc-btn kc-btn-primary" onClick={() => window.print()} disabled={loading || (tab === 'rentang' && !range.valid)}>
-            <i className="fa-solid fa-print" aria-hidden="true"></i> Cetak PDF
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="kc-btn hover:border-[#008187] hover:text-[#008187]"
+              onClick={() => loadData(false)}
+              disabled={loading}
+              title="Perbarui data logbook dan lampiran terbaru"
+            >
+              <i className={`fa-solid fa-arrows-rotate ${loading ? 'fa-spin' : ''}`} aria-hidden="true"></i>
+              <span className="hidden sm:inline">Segarkan Data</span>
+            </button>
+            <button
+              type="button"
+              className="kc-btn kc-btn-primary"
+              onClick={() => window.print()}
+              disabled={loading || (tab === 'rentang' && !range.valid)}
+            >
+              <i className="fa-solid fa-print" aria-hidden="true"></i> Cetak PDF
+            </button>
+          </div>
         }
       />
 

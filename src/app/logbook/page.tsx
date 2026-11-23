@@ -111,8 +111,10 @@ function CalendarInner() {
 
       <section className="kc-cal-card" aria-label="Kalender logbook">
         <div className="kc-cal-week">
-          {WEEK.map((w) => (
-            <span key={w}>{w}</span>
+          {WEEK.map((w, idx) => (
+            <span key={w} className={idx >= 5 ? 'opacity-35 text-zinc-400 font-normal' : ''}>
+              {w}
+            </span>
           ))}
         </div>
         <div className="kc-cal-grid">
@@ -120,23 +122,33 @@ function CalendarInner() {
             if (!cell) return <span key={`e-${i}`} />;
             const log = byDate.get(cell.iso);
             const isToday = cell.iso === todayIso();
+            const dateObj = new Date(cell.iso);
+            const dayOfWeek = dateObj.getDay(); // 0 is Sunday, 6 is Saturday
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const hasLog = !!log;
+            const isSelected = cell.iso === selected;
+
             const classes = [
               'kc-day',
-              log ? STATUS_STYLE[log.status].cell : '',
-              cell.iso === selected ? 'kc-day-selected' : '',
+              isWeekend ? 'kc-day-weekend' : '',
+              hasLog ? 'kc-day-filled' : '',
+              hasLog && log.status === 'rejected' ? 'kc-day-rejected' : '',
+              isSelected ? 'kc-day-selected' : '',
               isToday ? 'kc-day-today' : '',
-            ].join(' ');
+            ].filter(Boolean).join(' ');
+
             return (
               <button
-                disabled={cell.iso > todayIso()}
+                disabled={isWeekend || cell.iso > todayIso()}
                 key={cell.iso}
                 type="button"
                 className={classes}
                 onClick={() => {
+                  if (isWeekend) return;
                   setSelected(cell.iso);
                   setModalDate(cell.iso);
                 }}
-                aria-label={`${cell.day} ${MONTHS[month]}${log ? `, ${STATUS_STYLE[log.status].label}` : ''}`}
+                aria-label={`${cell.day} ${MONTHS[month]}${isWeekend ? ' (Libur akhir pekan)' : ''}${log ? `, ${STATUS_STYLE[log.status].label}` : ''}`}
               >
                 {cell.day}
               </button>
@@ -146,7 +158,20 @@ function CalendarInner() {
       </section>
 
       <ul className="kc-cal-legend" aria-label="Keterangan status">
-        <li><i className="kc-dot kc-dot-rejected" aria-hidden="true"></i>Revisi <b>{counts.rejected}</b></li>
+        <li>
+          <i className="kc-dot" style={{ background: 'linear-gradient(135deg, #f15a22, #e0700f)' }}></i>
+          Sudah diisi <b>{logs.length}</b>
+        </li>
+        {counts.rejected > 0 && (
+          <li>
+            <i className="kc-dot kc-dot-rejected" aria-hidden="true"></i>
+            Revisi <b>{counts.rejected}</b>
+          </li>
+        )}
+        <li>
+          <i className="kc-dot" style={{ background: '#e4eded', border: '1px solid #c2d3d4' }}></i>
+          Sabtu & Minggu libur
+        </li>
       </ul>
 
       {modalDate ? (
@@ -166,9 +191,9 @@ function CalendarInner() {
         </div>
         {selectedLog ? (
           <button type="button" className="kc-cal-entry" onClick={() => setModalDate(selected)}>
-            <span className={`kc-cal-chip ${STATUS_STYLE[selectedLog.status].cell}`}>
-              <i className={`fa-solid ${STATUS_STYLE[selectedLog.status].icon}`} aria-hidden="true"></i>
-              {STATUS_STYLE[selectedLog.status].label}
+            <span className="kc-cal-chip" style={{ background: 'linear-gradient(135deg, #f15a22, #e0700f)', color: '#fff' }}>
+              <i className="fa-solid fa-circle-check" aria-hidden="true"></i>
+              Sudah Diisi ({STATUS_STYLE[selectedLog.status].label})
             </span>
             <b>{selectedLog.title}</b>
             <small>{selectedLog.start_time.slice(0, 5)} – {selectedLog.end_time.slice(0, 5)}</small>

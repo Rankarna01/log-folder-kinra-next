@@ -140,18 +140,23 @@ export default function MentorDashboardPage() {
 
   return (
     <div className="kc-page">
-      <header className="kc-head">
-        <p className="kc-eyebrow">Portal mentor · Dashboard</p>
-        <h1>
-          {loading
-            ? 'Memuat dashboard…'
-            : `${d.totals.submitted} logbook menunggu review dari ${interns.length} peserta`}
-        </h1>
-        <p>
-          Ringkasan aktivitas logbook {isMine ? 'peserta bimbingan Anda' : 'seluruh peserta'} selama 30 hari
-          terakhir. Sumber: tabel logbook dan profil di Supabase.
-        </p>
-      </header>
+      {/* Header Banner */}
+      <div className="bg-[#008187] rounded-3xl p-6 text-white shadow-md relative overflow-hidden">
+        <div className="relative z-10 space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">
+            Portal mentor · Dashboard
+          </p>
+          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight !text-white">
+            {loading
+              ? 'Memuat dashboard…'
+              : `${d.totals.submitted} logbook menunggu review dari ${interns.length} peserta`}
+          </h1>
+          <p className="text-xs md:text-sm text-emerald-50 max-w-2xl">
+            Ringkasan aktivitas logbook {isMine ? 'peserta bimbingan Anda' : 'seluruh peserta'} selama 30 hari
+            terakhir. Sumber: tabel logbook dan profil di Supabase.
+          </p>
+        </div>
+      </div>
 
       <section className="kc-tiles" aria-label="Ringkasan">
         <div className="kc-tile">

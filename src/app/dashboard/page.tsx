@@ -130,8 +130,8 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {/* Hero KINRA Deep Green Grid Card */}
-        <section className="bg-kinra-grid rounded-[28px] p-5 relative overflow-hidden shadow-xs text-white">
+        {/* Hero KINRA Solid Primary Card */}
+        <section className="bg-[#008187] rounded-[28px] p-5 relative overflow-hidden shadow-xs text-white">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h2 className="text-[15px] sm:text-lg font-bold !text-white leading-snug">

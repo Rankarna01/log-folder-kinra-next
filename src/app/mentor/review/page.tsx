@@ -165,12 +165,12 @@ export default function MentorReviewPage() {
     <div className="space-y-6 w-full">
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-[#18181B] via-amber-700 to-amber-900 rounded-3xl p-6 text-white shadow-lg relative overflow-hidden">
+      <div className="bg-[#008187] rounded-3xl p-6 text-white shadow-md relative overflow-hidden">
         <div className="relative z-10 space-y-2">
-          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">
+          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight !text-white">
             Verifikasi & Review Logbook Harian
           </h1>
-          <p className="text-xs md:text-sm text-amber-100 max-w-2xl">
+          <p className="text-xs md:text-sm text-emerald-50 max-w-2xl">
             Tinjau catatan logbook kegiatan harian peserta magang, berikan feedback, dan setujui laporan sebelum dicetak.
           </p>
         </div>

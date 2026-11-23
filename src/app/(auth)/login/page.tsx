@@ -152,6 +152,23 @@ export default function LoginPage() {
     await finishLogin(json.email ?? loginEmail, password, identifier);
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    if (step === 'email') return handleEmail(e);
+    if (step === 'password') return handlePassword(e);
+    return handleCreate(e);
+  };
+
+  // Mengubah NIK setelah langkah sandi dimulai: kembali ke langkah pertama
+  const onIdentifierChange = (v: string) => {
+    setEmailInput(v);
+    if (step !== 'email') {
+      setStep('email');
+      setPassword('');
+      setConfirm('');
+      setErrorMsg('');
+    }
+  };
+
   const backToEmail = () => {
     setStep('email');
     setErrorMsg('');
@@ -184,41 +201,33 @@ export default function LoginPage() {
         </div>
       )}
 
-      {step === 'email' && (
-        <form onSubmit={handleEmail} className="auth-form">
-          <AuthField id="email" label="Masukkan NIK ID Absen FInger" type="text" icon="fa-id-card" value={email} onChange={setEmailInput} placeholder="NIK (peserta), ID admin, atau email" autoComplete="username" />
-          <button type="submit" disabled={loading} className="btn-masuk">
-            {loading ? 'Memeriksa…' : 'Lanjut'}
-          </button>
-        </form>
-      )}
+      <form onSubmit={handleSubmit} className="auth-form">
+        <input type="text" name="username" value={email.trim()} autoComplete="username" readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
+        <AuthField id="email" label="Masukkan NIK ID Absen FInger" type="text" icon="fa-id-card" value={email} onChange={onIdentifierChange} placeholder="NIK (peserta), ID admin, atau email" autoComplete="username" />
 
-      {step === 'password' && (
-        <form onSubmit={handlePassword} className="auth-form">
-          <input type="text" name="username" value={email.trim()} autoComplete="username" readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
+        {step === 'password' && (
           <AuthField id="password" label="Kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder="Masukkan kata sandi" autoComplete="current-password" />
-          <button type="submit" disabled={loading} className="btn-masuk">
-            {loading ? 'Memproses…' : 'Masuk'}
-          </button>
-          <button type="button" className="auth-link-btn" onClick={backToEmail}>
-            Ganti NIK atau email
-          </button>
-        </form>
-      )}
+        )}
 
-      {step === 'create' && (
-        <form onSubmit={handleCreate} className="auth-form">
-          <input type="text" name="username" value={email.trim()} autoComplete="username" readOnly tabIndex={-1} aria-hidden="true" className="sr-only" />
-          <AuthField id="new-password" label="Buat kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder={`Minimal ${MIN_PASSWORD_LENGTH} karakter`} autoComplete="new-password" />
-          <AuthField id="confirm-password" label="Ulangi kata sandi" type="password" icon="fa-shield-halved" value={confirm} onChange={setConfirm} placeholder="Ketik ulang kata sandi" autoComplete="new-password" />
-          <button type="submit" disabled={loading} className="btn-masuk">
-            {loading ? 'Menyimpan…' : 'Simpan dan masuk'}
-          </button>
+        {step === 'create' && (
+          <>
+            <AuthField id="new-password" label="Buat kata sandi" type="password" icon="fa-lock" value={password} onChange={setPassword} placeholder={`Minimal ${MIN_PASSWORD_LENGTH} karakter`} autoComplete="new-password" />
+            <AuthField id="confirm-password" label="Ulangi kata sandi" type="password" icon="fa-shield-halved" value={confirm} onChange={setConfirm} placeholder="Ketik ulang kata sandi" autoComplete="new-password" />
+          </>
+        )}
+
+        <button type="submit" disabled={loading} className="btn-masuk">
+          {loading
+            ? step === 'email' ? 'Memeriksa…' : step === 'password' ? 'Memproses…' : 'Menyimpan…'
+            : step === 'email' ? 'Lanjut' : step === 'password' ? 'Masuk' : 'Simpan dan masuk'}
+        </button>
+
+        {step !== 'email' && (
           <button type="button" className="auth-link-btn" onClick={backToEmail}>
             Ganti NIK atau email
           </button>
-        </form>
-      )}
+        )}
+      </form>
 
       <p className="auth-foot">PT Kawasan Industri Nusantara · KEK Sei Mangkei</p>
     </AuthShell>

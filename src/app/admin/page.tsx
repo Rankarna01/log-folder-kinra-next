@@ -158,12 +158,12 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-6 w-full">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-[#18181B] via-[#0B6E6C] to-[#075250] rounded-3xl p-6 text-white shadow-lg relative overflow-hidden">
+      <div className="bg-[#008187] rounded-3xl p-6 text-white shadow-md relative overflow-hidden">
         <div className="relative z-10 space-y-2">
-          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight">
+          <h1 className="text-xl md:text-2xl font-extrabold tracking-tight !text-white">
             Dashboard Manajemen & Monitoring
           </h1>
-          <p className="text-xs md:text-sm text-emerald-100 max-w-2xl">
+          <p className="text-xs md:text-sm text-emerald-50 max-w-2xl">
             Kelola data peserta magang, daftar mentor pembimbing, rekap logbook kegiatan, dan hak akses sistem.
           </p>
         </div>

@@ -55,7 +55,7 @@ export default function GantiSandiPage() {
     setLoading(true);
     const { data, error } = await supabase.auth.updateUser({
       password,
-      data: { must_change_password: false },
+      data: { must_change_password: false, pending_activation: false },
     });
     if (error || !data.user) {
       setErrorMsg(error?.message ?? 'Kata sandi belum bisa diganti. Coba lagi.');

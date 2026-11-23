@@ -81,6 +81,11 @@ export default function LoginPage() {
       return;
     }
     writeEmail(identifier);
+    if (data.user.user_metadata?.must_change_password === true) {
+      router.replace('/ganti-sandi');
+      router.refresh();
+      return;
+    }
     const { data: prof } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
     router.replace(homeForRole(prof?.role ?? roleFromEmail(data.user.email)));
     router.refresh();

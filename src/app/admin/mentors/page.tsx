@@ -231,7 +231,7 @@ export default function AdminMentorsPage() {
       toast.success(
         draft.id
           ? `Data ${payload.name} diperbarui.`
-          : `${payload.name} terdaftar. Mentor masuk dengan NIK dan membuat kata sandi di halaman login.`,
+          : `${payload.name} terdaftar. Login dengan NIK dan kata sandi awal password123.`,
         draft.id ? 'Mentor diperbarui' : 'Mentor ditambahkan'
       );
       setDraft(null);

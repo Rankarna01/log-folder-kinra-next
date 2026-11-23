@@ -26,3 +26,6 @@ export function generatePassword(length = 12): string {
 }
 
 export const MIN_PASSWORD_LENGTH = 8;
+
+/** Kata sandi awal semua akun baru. Wajib diganti saat pertama kali masuk. */
+export const DEFAULT_PASSWORD = 'password123';

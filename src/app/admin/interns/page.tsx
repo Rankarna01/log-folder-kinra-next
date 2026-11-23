@@ -186,7 +186,7 @@ export default function AdminInternsPage() {
           mentorName: mentor.name,
         });
         toast.success(
-          `${draft.name.trim()} terdaftar. Peserta masuk dengan NIK di halaman login.`,
+          `${draft.name.trim()} terdaftar. Login dengan NIK dan kata sandi awal password123.`,
           'Anak magang ditambahkan'
         );
       }

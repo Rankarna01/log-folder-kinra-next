@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { nikLoginEmail } from '@/lib/auth/identifier';
+import { DEFAULT_PASSWORD } from '@/lib/auth/password';
 
 // NIK peserta: angka saja, panjang bebas
 const NIK_RE = /^\d+$/;
@@ -154,8 +155,9 @@ export async function POST(req: Request) {
 
   const { data, error } = await admin.auth.admin.createUser({
     email: loginEmail,
+    password: DEFAULT_PASSWORD,
     email_confirm: true,
-    user_metadata: { name, pending_activation: true },
+    user_metadata: { name, must_change_password: true },
   });
   if (error || !data.user) {
     return NextResponse.json({ error: error?.message ?? 'Akun gagal dibuat.' }, { status: 500 });

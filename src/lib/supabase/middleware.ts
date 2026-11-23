@@ -49,6 +49,14 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Akun dengan kata sandi awal harus menggantinya dulu.
+  if (user && user.user_metadata?.must_change_password === true && path !== '/ganti-sandi' && !path.startsWith('/api/')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/ganti-sandi';
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
+
   // Role hanya dicari bila memang dibutuhkan untuk keputusan redirect.
   if (user && (isAdminArea || isMentorArea || isParticipantArea)) {
     const { data: prof } = await supabase

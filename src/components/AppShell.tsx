@@ -125,11 +125,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
-        {/* Mobile TopBar */}
+        {/* TopBar (Website & Mobile) */}
         <TopBar
           userName={name}
           userDivision={division}
           userRole={role}
+          userNik={profile?.nim_nik}
+          avatarUrl={profile?.avatar_url}
           onLogout={handleLogout}
         />
 

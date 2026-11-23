@@ -711,6 +711,44 @@ html[data-theme="dark"] .auth-theme .icon-moon { display: none; }
 }
 
 /* ==========================================================================
+   TopBar: Website & Mobile Header
+   ========================================================================== */
+.kc-topbar {
+  background: linear-gradient(90deg, rgba(222, 237, 234, 0.95) 0%, rgba(238, 246, 244, 0.95) 50%, rgba(228, 240, 236, 0.95) 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(0, 129, 135, 0.14);
+}
+
+html[data-theme="dark"] .kc-topbar {
+  background: linear-gradient(90deg, #132221 0%, #172a29 50%, #142423 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .kc-topbar .text-zinc-800 {
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .kc-topbar .text-zinc-900 {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .kc-topbar .text-zinc-500 {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .kc-topbar button {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .kc-topbar button:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+/* ==========================================================================
    Sidebar: tombol ciutkan / perlebar (desktop saja)
    ========================================================================== */
 .kc-sidebar { width: 264px; transition: width 0.25s var(--ease); overflow: hidden; }

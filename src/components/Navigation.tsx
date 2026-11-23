@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { UserRole } from '@/types/database';
@@ -266,63 +267,265 @@ export function Sidebar({
 }
 
 export function TopBar({
-  userName = 'Muhammad Randy Karna',
+  userName = 'Randy',
   userDivision = 'Divisi Teknologi Informasi',
   userRole = 'participant',
+  userNik,
+  avatarUrl,
   onLogout,
 }: {
   userName?: string;
   userDivision?: string;
   userRole?: UserRole;
+  userNik?: string | null;
+  avatarUrl?: string | null;
   onLogout?: () => void;
 }) {
-  const roleBadges: Record<UserRole, { label: string; bg: string; text: string }> = {
-    admin: { label: 'Admin', bg: 'bg-purple-500/20', text: 'text-purple-300' },
-    mentor: { label: 'Mentor', bg: 'bg-amber-500/20', text: 'text-amber-300' },
-    participant: { label: 'Peserta', bg: 'bg-emerald-500/20', text: 'text-emerald-300' },
+  const pathname = usePathname();
+  const collapsed = useSidebarCollapsed();
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Sinkronisasi status dark mode dari DOM / cookie
+  useEffect(() => {
+    const checkDark = () => {
+      const root = document.documentElement;
+      const explicit = root.getAttribute('data-theme');
+      setIsDark(
+        explicit === 'dark' ||
+          (explicit !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      );
+    };
+    checkDark();
+  }, []);
+
+  const toggleTheme = () => {
+    const root = document.documentElement;
+    const next = isDark ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    document.cookie = `kinra_tema=${next}; path=/; max-age=31536000; samesite=lax`;
+    setIsDark(!isDark);
   };
 
-  const badge = roleBadges[userRole] || roleBadges.participant;
+  // Tutup dropdown saat klik di luar
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!collapsed);
+  };
+
+  // Pemetaan label breadcrumb dinamis sesuai halaman & role
+  const roleLabelMap: Record<UserRole, { badge: string; desc: string }> = {
+    participant: { badge: 'PENGGUNA', desc: 'Pengguna' },
+    mentor: { badge: 'MENTOR', desc: 'Mentor' },
+    admin: { badge: 'SUPER ADMIN', desc: 'Super Admin' },
+  };
+  const roleInfo = roleLabelMap[userRole] || roleLabelMap.participant;
+
+  let section = 'DASHBOARD SDM';
+  let title = 'Dashboard SDM';
+
+  if (pathname === '/dashboard' || pathname === '/') {
+    section = 'DASHBOARD SDM';
+    title = 'Dashboard SDM';
+  } else if (pathname.startsWith('/logbook/create')) {
+    section = 'LOGBOOK SDM';
+    title = 'Buat Logbook Baru';
+  } else if (pathname.startsWith('/logbook')) {
+    section = 'LOGBOOK SDM';
+    title = 'Kalender Logbook';
+  } else if (pathname.startsWith('/reports')) {
+    section = 'LAPORAN SDM';
+    title = 'Rekap & Laporan PDF';
+  } else if (pathname === '/mentor/review') {
+    section = 'PORTAL MENTOR';
+    title = 'Verifikasi Logbook';
+  } else if (pathname === '/mentor/interns') {
+    section = 'PORTAL MENTOR';
+    title = 'Data Anak Magang Bimbingan';
+  } else if (pathname.startsWith('/mentor')) {
+    section = 'PORTAL MENTOR';
+    title = 'Dashboard Mentor';
+  } else if (pathname === '/admin/interns') {
+    section = 'SUPER ADMIN';
+    title = 'Data Anak Magang';
+  } else if (pathname === '/admin/mentors') {
+    section = 'SUPER ADMIN';
+    title = 'Data Mentor';
+  } else if (pathname === '/admin/divisions') {
+    section = 'SUPER ADMIN';
+    title = 'Master Divisi';
+  } else if (pathname === '/admin/settings') {
+    section = 'SUPER ADMIN';
+    title = 'Pengaturan Sistem';
+  } else if (pathname.startsWith('/admin')) {
+    section = 'SUPER ADMIN';
+    title = 'Ringkasan Admin';
+  } else if (pathname.startsWith('/profile')) {
+    section = 'AKUN PENGGUNA';
+    title = 'Profil Pengguna';
+  }
+
+  const shortName = userName.trim().split(' ')[0] || userName;
+  const initial = (shortName || 'U').charAt(0).toUpperCase();
+  const nikDisplay = userNik ? `NIK ${userNik}` : (userRole === 'admin' ? 'ID 0001' : userDivision);
 
   return (
-    <div className="w-full pt-2 px-3 md:hidden">
-      <div className="bg-[#18181B] text-white rounded-full px-3 py-1.5 flex items-center justify-between text-[11px] shadow-md">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="bg-white rounded-full px-2 py-0.5 flex items-center justify-center shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/logo/kinra-logo.png" alt="KINRA" className="h-4 w-auto object-contain" />
+    <header className="kc-topbar sticky top-0 z-20 w-full h-14 md:h-16 px-3 sm:px-5 md:px-6 flex items-center justify-between border-b transition-colors select-none">
+      {/* Sisi Kiri: Tombol Hamburger + Breadcrumb */}
+      <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-600 hover:text-zinc-900 hover:bg-black/5 active:scale-95 transition cursor-pointer shrink-0"
+          aria-label={collapsed ? 'Perlebar sidebar' : 'Ciutkan sidebar'}
+          title={collapsed ? 'Perlebar sidebar' : 'Ciutkan sidebar'}
+        >
+          <i className="fa-solid fa-bars text-base" aria-hidden="true"></i>
+        </button>
+
+        {/* Breadcrumb info */}
+        <div className="flex items-center gap-2 min-w-0 text-xs">
+          <span className="text-[10px] md:text-[11px] font-bold text-zinc-500 tracking-wider uppercase font-mono shrink-0">
+            {section}
           </span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-          <span className="font-semibold tracking-tight truncate">
-            {userName} • {userDivision}
-          </span>
-          <span
-            className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${badge.bg} ${badge.text}`}
-          >
-            {badge.label}
+          <span className="text-zinc-400 font-light text-xs">/</span>
+          <span className="text-xs md:text-sm font-semibold text-zinc-800 tracking-tight truncate">
+            {title} · Peran: {roleInfo.desc}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0 ml-2">
-          {onLogout ? (
-            <button
-              onClick={onLogout}
-              className="px-2.5 py-0.5 rounded-full bg-[#0B6E6C] text-white border border-emerald-400/30 font-bold hover:bg-[#0D8280] transition flex items-center gap-1 cursor-pointer text-[10px]"
-            >
-              <i className="fa-solid fa-right-from-bracket text-[9px]"></i>
-              <span>Keluar</span>
-            </button>
-          ) : (
-            <Link
-              href="/login"
-              className="px-2.5 py-0.5 rounded-full bg-[#0B6E6C] text-white border border-emerald-400/30 font-bold hover:bg-[#0D8280] transition flex items-center gap-1 text-[10px]"
-            >
-              <i className="fa-solid fa-right-to-bracket text-[9px]"></i>
-              <span>Masuk</span>
-            </Link>
+      </div>
+
+      {/* Sisi Kanan: Notifikasi, Tema Gelap, User Profile */}
+      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-3">
+        {/* Tombol OneSeiMangkei SEZ di-hide sesuai instruksi pengguna */}
+        {/* <a href="https://onesimangkei.id" target="_blank" rel="noreferrer" className="hidden ...">OneSeiMangkei SEZ ↗</a> */}
+
+        {/* Notifikasi Bell */}
+        <div className="relative" ref={notifRef}>
+          <button
+            type="button"
+            onClick={() => setNotifOpen(!notifOpen)}
+            className="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-zinc-200/90 shadow-2xs flex items-center justify-center text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 transition cursor-pointer relative"
+            aria-label="Pemberitahuan"
+            title="Pemberitahuan"
+          >
+            <i className="fa-regular fa-bell text-sm" aria-hidden="true"></i>
+          </button>
+
+          {notifOpen && (
+            <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-zinc-200/80 p-3 z-50 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+                <span className="font-bold text-zinc-800">Pemberitahuan</span>
+                <span className="text-[10px] text-zinc-400 font-medium">Semua terbaca</span>
+              </div>
+              <div className="py-4 text-center text-zinc-500 text-[11px]">
+                <i className="fa-regular fa-bell-slash text-zinc-300 text-xl mb-1.5 block"></i>
+                Tidak ada pemberitahuan baru
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tombol Tema Gelap/Terang */}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-zinc-200/90 shadow-2xs flex items-center justify-center text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 transition cursor-pointer"
+          aria-label={isDark ? 'Beralih ke tema terang' : 'Beralih ke tema gelap'}
+          title={isDark ? 'Beralih ke tema terang' : 'Beralih ke tema gelap'}
+        >
+          <i className={`fa-regular ${isDark ? 'fa-sun text-amber-500' : 'fa-moon'} text-sm`} aria-hidden="true"></i>
+        </button>
+
+        {/* Divider Vertikal */}
+        <div className="h-6 w-px bg-zinc-300/80 mx-1 hidden sm:block" aria-hidden="true" />
+
+        {/* Profile Card & Avatar */}
+        <div className="relative" ref={profileMenuRef}>
+          <div
+            onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+            className="flex items-center gap-2.5 pl-1 py-1 rounded-full hover:bg-white/40 transition cursor-pointer"
+            role="button"
+            tabIndex={0}
+            aria-expanded={profileMenuOpen}
+            aria-label="Menu akun pengguna"
+          >
+            <div className="hidden sm:flex flex-col items-end leading-tight">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-xs text-zinc-900 tracking-tight">{shortName}</span>
+                <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border border-zinc-300/80 bg-white/80 text-zinc-700 tracking-wider shadow-2xs">
+                  {roleInfo.badge}
+                </span>
+              </div>
+              <span className="text-[10px] text-zinc-500 font-mono tracking-tight mt-0.5">
+                {nikDisplay}
+              </span>
+            </div>
+
+            <div className="w-9 h-9 rounded-full bg-[#008187] text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs ring-2 ring-white/90 overflow-hidden">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
+              ) : (
+                <span>{initial}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Profile Dropdown Menu */}
+          {profileMenuOpen && (
+            <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-zinc-200/80 p-2 z-50 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="px-3 py-2 border-b border-zinc-100">
+                <p className="font-bold text-zinc-900 truncate">{userName}</p>
+                <p className="text-[11px] text-zinc-500 font-mono truncate">{nikDisplay}</p>
+              </div>
+
+              <div className="py-1">
+                <Link
+                  href="/profile"
+                  onClick={() => setProfileMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-zinc-700 hover:bg-[#F0F4F3] hover:text-[#008187] font-semibold transition"
+                >
+                  <i className="fa-regular fa-user text-xs w-4 text-center"></i>
+                  <span>Profil Pengguna</span>
+                </Link>
+              </div>
+
+              {onLogout && (
+                <div className="pt-1 border-t border-zinc-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50 font-semibold transition cursor-pointer text-left"
+                  >
+                    <i className="fa-solid fa-right-from-bracket text-xs w-4 text-center"></i>
+                    <span>Keluar Akun</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
-    </div>
+    </header>
   );
 }
 

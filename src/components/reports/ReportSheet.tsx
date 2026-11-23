@@ -65,7 +65,7 @@ function identityValue(source: IdentitySource, profile: Profile | null, periodTe
   }
 }
 
-function cellValue(l: Logbook, key: ColumnKey): ReactNode {
+function cellValue(l: Logbook, key: ColumnKey, onOpenAttachments?: (l: Logbook) => void): ReactNode {
   switch (key) {
     case 'date': {
       const d = parseIso(l.date);
@@ -89,23 +89,18 @@ function cellValue(l: Logbook, key: ColumnKey): ReactNode {
       const count = l.attachments?.length ?? 0;
       if (count === 0) return <span style={{ color: '#9ca3af' }}>0</span>;
       return (
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '3px',
-            fontWeight: 700,
-            color: '#15803d',
-            backgroundColor: '#f0fdf4',
-            padding: '1px 5px',
-            borderRadius: '4px',
-            fontSize: '9.5px',
-            border: '1px solid #bbf7d0',
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenAttachments?.(l);
           }}
+          className="rp-bukti-badge group cursor-pointer"
+          title={`Klik untuk melihat ${count} bukti dokumentasi`}
         >
-          <i className="fa-solid fa-paperclip" style={{ fontSize: '8px' }}></i>
-          {count}
-        </span>
+          <i className="fa-solid fa-paperclip" style={{ fontSize: '8.5px' }}></i>
+          <span>{count}</span>
+        </button>
       );
     }
     case 'obstacles':
@@ -124,7 +119,7 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
   const [sheetHeight, setSheetHeight] = useState<number | null>(null);
   const [mode, setMode] = useState<'fit' | 'actual' | 'custom'>('fit');
   const [customZoom, setCustomZoom] = useState<number>(1);
-  const [previewAttachment, setPreviewAttachment] = useState<(Attachment & { logDate?: string; logTitle?: string }) | null>(null);
+  const [selectedLog, setSelectedLog] = useState<Logbook | null>(null);
 
   const BASE_WIDTH = 740;
 
@@ -199,16 +194,6 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
       hours: Math.round((minutes / 60) * 10) / 10,
       attachments: logs.reduce((acc, l) => acc + (l.attachments?.length ?? 0), 0),
     };
-  }, [logs]);
-
-  const allAttachments = useMemo(() => {
-    return logs.flatMap((l) =>
-      (l.attachments ?? []).map((att) => ({
-        ...att,
-        logDate: l.date,
-        logTitle: l.title,
-      }))
-    );
   }, [logs]);
 
   const withObstacles = logs.filter((l) => l.obstacles);
@@ -441,7 +426,7 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
                         BOLD_KEYS.includes(c.key) ? 'b' : '',
                         PRE_KEYS.includes(c.key) ? 'pre' : '',
                       ].join(' ').trim();
-                      return <td key={c.key} className={cls}>{cellValue(l, c.key)}</td>;
+                      return <td key={c.key} className={cls}>{cellValue(l, c.key, setSelectedLog)}</td>;
                     })}
                   </tr>
                 ))}
@@ -485,55 +470,6 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
 
       {tpl.footnote && <p className="rp-foot">{tpl.footnote}</p>}
 
-      {allAttachments.length > 0 && (
-        <div className="rp-attachments-section">
-          <div className="rp-sec rp-att-sec-title">
-            <span>Lampiran Bukti Dokumentasi Kegiatan ({allAttachments.length} berkas)</span>
-          </div>
-          <div className="rp-att-grid">
-            {allAttachments.map((att, idx) => {
-              const d = parseIso(att.logDate);
-              const dateLabel = `${d.getDate()} ${NAMES_ID[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`;
-              return (
-                <div key={att.id || idx} className="rp-att-card">
-                  <div
-                    className="rp-att-media cursor-pointer group"
-                    onClick={() => setPreviewAttachment(att)}
-                    title="Klik untuk memperbesar bukti"
-                  >
-                    {isImage(att.mime_type) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={att.file_url}
-                        alt={att.caption || `Bukti ${idx + 1}`}
-                        loading="lazy"
-                        className="rp-att-img group-hover:scale-105 transition-transform duration-200"
-                      />
-                    ) : (
-                      <div className="rp-att-doc">
-                        <i className={`fa-solid ${isPdf(att.mime_type) ? 'fa-file-pdf' : 'fa-file-lines'} rp-att-doc-icon`}></i>
-                        <span className="rp-att-doc-name">{fileNameOf(att.file_path)}</span>
-                      </div>
-                    )}
-                    <span className="rp-att-badge">Bukti #{idx + 1}</span>
-                  </div>
-                  <div className="rp-att-info">
-                    <div className="rp-att-date">
-                      <span>{dateLabel}</span>
-                      <span className="rp-att-dot">•</span>
-                      <span className="rp-att-log-title" title={att.logTitle}>{att.logTitle}</span>
-                    </div>
-                    {att.caption && (
-                      <div className="rp-att-caption" title={att.caption}>{att.caption}</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       <div className="rp-sign">
         <div>
           <p>{tpl.signLeft}</p>
@@ -547,59 +483,94 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
         </div>
       </div>
 
-      {previewAttachment && (
+      {selectedLog && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 print:hidden"
-          onClick={() => setPreviewAttachment(null)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 print:hidden animate-in fade-in duration-150"
+          onClick={() => setSelectedLog(null)}
           role="dialog"
           aria-modal="true"
         >
           <div
-            className="relative max-w-3xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            className="relative w-full max-w-2xl bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-4 py-3 bg-[var(--surface-2)] border-b border-[var(--line-2)] flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-[var(--ink)] block">
-                  {previewAttachment.caption || fileNameOf(previewAttachment.file_path)}
-                </span>
-                {previewAttachment.logDate && (
-                  <span className="text-[11px] text-[var(--ink-muted)]">
-                    {previewAttachment.logDate} · {previewAttachment.logTitle}
-                  </span>
-                )}
+            {/* Header Modal */}
+            <div className="px-5 py-3.5 bg-[var(--surface-2)] border-b border-[var(--line-2)] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                  <i className="fa-solid fa-paperclip"></i>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--ink)]">
+                    Bukti Dokumentasi ({selectedLog.attachments?.length ?? 0})
+                  </h3>
+                  <p className="text-[11px] text-[var(--ink-muted)]">
+                    {parseIso(selectedLog.date).getDate()} {NAMES_ID[parseIso(selectedLog.date).getMonth()]} {parseIso(selectedLog.date).getFullYear()} · {selectedLog.title}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setPreviewAttachment(null)}
-                className="w-7 h-7 rounded-lg bg-[var(--surface)] text-[var(--ink-2)] hover:bg-[var(--surface-3)] flex items-center justify-center cursor-pointer ml-3"
+                onClick={() => setSelectedLog(null)}
+                className="w-8 h-8 rounded-xl bg-[var(--surface)] text-[var(--ink-2)] hover:bg-[var(--surface-3)] flex items-center justify-center transition cursor-pointer"
+                aria-label="Tutup"
               >
                 <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
-            <div className="p-3 overflow-auto flex items-center justify-center bg-zinc-950/5">
-              {isImage(previewAttachment.mime_type) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={previewAttachment.file_url}
-                  alt=""
-                  className="max-h-[75vh] w-auto object-contain rounded-lg shadow-sm"
-                />
+
+            {/* List Berkas Bukti */}
+            <div className="p-4 overflow-y-auto space-y-4">
+              {(!selectedLog.attachments || selectedLog.attachments.length === 0) ? (
+                <p className="text-center text-xs text-zinc-500 py-6">Tidak ada berkas bukti.</p>
               ) : (
-                <div className="py-12 px-8 text-center">
-                  <i className={`fa-solid ${isPdf(previewAttachment.mime_type) ? 'fa-file-pdf text-red-500' : 'fa-file text-blue-500'} text-5xl mb-3`}></i>
-                  <p className="font-bold text-sm mb-3">{fileNameOf(previewAttachment.file_path)}</p>
-                  <a
-                    href={previewAttachment.file_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--tosca)] text-white text-xs font-bold shadow-2xs hover:opacity-90"
-                  >
-                    <i className="fa-solid fa-arrow-up-right-from-square"></i>
-                    Buka Berkas
-                  </a>
-                </div>
+                selectedLog.attachments.map((att, idx) => (
+                  <div key={att.id || idx} className="border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50">
+                    <div className="p-3 bg-white border-b border-zinc-100 flex items-center justify-between">
+                      <span className="text-xs font-bold text-zinc-800">
+                        Bukti #{idx + 1}
+                        {att.caption && att.caption !== selectedLog.title && (
+                          <span className="font-normal text-zinc-500 ml-2">({att.caption})</span>
+                        )}
+                      </span>
+                      <a
+                        href={att.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-[#008187] hover:underline font-semibold"
+                      >
+                        <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        Buka Asli
+                      </a>
+                    </div>
+                    <div className="p-3 flex items-center justify-center bg-zinc-950/5">
+                      {isImage(att.mime_type) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={att.file_url}
+                          alt={att.caption || `Bukti ${idx + 1}`}
+                          className="max-h-[55vh] w-auto object-contain rounded-lg shadow-sm"
+                        />
+                      ) : (
+                        <div className="py-8 text-center">
+                          <i className={`fa-solid ${isPdf(att.mime_type) ? 'fa-file-pdf text-red-500' : 'fa-file text-blue-500'} text-4xl mb-2`}></i>
+                          <p className="text-xs font-semibold text-zinc-700">{fileNameOf(att.file_path)}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
               )}
+            </div>
+
+            <div className="px-5 py-3 bg-[var(--surface-2)] border-t border-[var(--line-2)] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedLog(null)}
+                className="kc-btn text-xs"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>
@@ -657,46 +628,80 @@ export function ReportSheet({ config, profile, logs, days, periodText, kindText 
         .rp-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: center; margin-top: 16px; }
         .rp-sign-space { height: 56px; }
         .rp-sign-name { font-weight: 700; text-decoration: underline; margin: 0; }
-        .rp-attachments-section { margin-top: 14px; break-inside: avoid; }
-        .rp-att-sec-title { text-align: left; padding: 4px 8px; font-weight: 700; margin-bottom: 8px; }
-        .rp-att-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-top: 8px; }
-        .rp-att-card { border: 1px solid #ccc; border-radius: 8px; overflow: hidden; background: #fff; display: flex; flex-direction: column; break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-        .rp-att-media { position: relative; height: 110px; background: #f4f5f5; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        .rp-att-img { width: 100%; height: 100%; object-fit: cover; }
-        .rp-att-badge { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.65); color: #fff; font-size: 8.5px; font-weight: 700; padding: 1.5px 5px; border-radius: 4px; }
-        .rp-att-doc { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px; text-align: center; color: #555; }
-        .rp-att-doc-icon { font-size: 26px; color: #dc2626; }
-        .rp-att-doc-name { font-size: 9.5px; word-break: break-all; max-width: 130px; }
-        .rp-att-info { padding: 6px 8px; background: #fff; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 2px; }
-        .rp-att-date { font-weight: 700; font-size: 9px; color: #2e7d32; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .rp-att-dot { opacity: 0.5; }
-        .rp-att-log-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: #333; }
-        .rp-att-caption { font-size: 8.5px; color: #666; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rp-bukti-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          font-weight: 700;
+          color: #15803d;
+          background-color: #f0fdf4;
+          padding: 1.5px 6px;
+          border-radius: 4px;
+          font-size: 9.5px;
+          border: 1px solid #bbf7d0;
+          transition: all 0.15s ease;
+        }
+        .rp-bukti-badge:hover {
+          background-color: #dcfce7;
+          border-color: #86efac;
+          transform: translateY(-1px);
+        }
         @media print {
-          @page { size: A4 landscape; margin: 10mm; }
-          body * { visibility: hidden !important; }
-          #print-area, #print-area * { visibility: visible !important; }
+          @page {
+            size: A4 landscape;
+            margin: 0;
+          }
+          *, *:before, *:after {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            width: 297mm !important;
+            height: 210mm !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          #print-area, #print-area * {
+            visibility: visible !important;
+          }
           #print-area {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100% !important;
-            min-width: 0 !important;
+            width: 297mm !important;
+            max-width: 297mm !important;
+            box-sizing: border-box !important;
+            padding: 8mm 10mm !important;
+            margin: 0 !important;
             transform: none !important;
-            padding: 0 !important;
-            box-shadow: none !important;
+            border: none !important;
             border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #fff !important;
           }
           .rp-container, .rp-scroll-viewport {
             overflow: visible !important;
             height: auto !important;
             width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
           .rp-preview-toolbar {
             display: none !important;
           }
-          .rp-detail tr, .rp-side li, .rp-attachments-section, .rp-att-card { break-inside: avoid; }
-          .rp-att-img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .rp-detail tr, .rp-side li {
+            break-inside: avoid;
+          }
+          .rp-bukti-badge {
+            cursor: default !important;
+            box-shadow: none !important;
+            transform: none !important;
+          }
         }
       `}</style>
         </div>

@@ -9,6 +9,7 @@ import { ReportSheet, fmtLong, parseIso, toIso } from '@/components/reports/Repo
 import { TemplateCards, type TemplateCardItem } from '@/components/reports/TemplateCards';
 import { DateRangeModal } from '@/components/reports/DateRangeModal';
 import { DEFAULT_TEMPLATE, normalizeTemplate, weekNumberOfMonth, type TemplateConfig } from '@/lib/reports/template';
+import { exportReportToPdf } from '@/lib/reports/exportPdf';
 import type { Logbook, Profile } from '@/types/database';
 
 type Tab = 'mingguan' | 'rentang' | 'template';
@@ -37,6 +38,7 @@ export default function ReportsPage() {
   const [templatesReady, setTemplatesReady] = useState(true);
   const [activeKey, setActiveKey] = useState<string>('standar');
   const [showRangePicker, setShowRangePicker] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -180,31 +182,60 @@ export default function ReportsPage() {
     );
   };
 
+  const handleExportPdf = async () => {
+    const el = document.getElementById('print-area');
+    if (!el) return;
+    setExportingPdf(true);
+    try {
+      const nameSafe = (profile?.name || 'Peserta').trim().replace(/[\s/\\?%*:|"<>]+/g, '_');
+      const filename = `Laporan_Logbook_${nameSafe}_${startIso}_sd_${endIso}.pdf`;
+      await exportReportToPdf(el, filename);
+      toast.success('File PDF laporan berhasil dibuat dan diunduh.');
+    } catch (err) {
+      console.error('Gagal export PDF:', err);
+      toast.error('Gagal mengekspor PDF langsung. Anda tetap dapat menggunakan tombol Cetak.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <PageHead
         eyebrow="Laporan"
         title="Cetak laporan"
-        lead="Pilih periode dan template, lalu cetak atau simpan sebagai PDF."
+        lead="Pilih periode dan template, lalu unduh PDF atau cetak langsung."
         actions={
           <div className="flex items-center gap-2">
             <button
               type="button"
               className="kc-btn hover:border-[#008187] hover:text-[#008187]"
               onClick={() => loadData(false)}
-              disabled={loading}
+              disabled={loading || exportingPdf}
               title="Perbarui data logbook dan lampiran terbaru"
             >
               <i className={`fa-solid fa-arrows-rotate ${loading ? 'fa-spin' : ''}`} aria-hidden="true"></i>
-              <span className="hidden sm:inline">Segarkan Data</span>
+              <span className="hidden sm:inline">Segarkan</span>
             </button>
             <button
               type="button"
-              className="kc-btn kc-btn-primary"
-              onClick={() => window.print()}
-              disabled={loading || (tab === 'rentang' && !range.valid)}
+              className="kc-btn kc-btn-primary !bg-[#008187] hover:!bg-[#006e73] text-white shadow-2xs font-bold"
+              onClick={handleExportPdf}
+              disabled={loading || exportingPdf || (tab === 'rentang' && !range.valid)}
+              title="Unduh langsung file PDF A4 Landscape kualitas tinggi yang identik dengan pratinjau"
             >
-              <i className="fa-solid fa-print" aria-hidden="true"></i> Cetak PDF
+              <i className={`fa-solid ${exportingPdf ? 'fa-circle-notch fa-spin' : 'fa-file-pdf'}`} aria-hidden="true"></i>
+              <span>{exportingPdf ? 'Membuat PDF...' : 'Unduh PDF'}</span>
+            </button>
+            <button
+              type="button"
+              className="kc-btn hover:border-zinc-300"
+              onClick={() => window.print()}
+              disabled={loading || exportingPdf || (tab === 'rentang' && !range.valid)}
+              title="Cetak via dialog browser"
+            >
+              <i className="fa-solid fa-print" aria-hidden="true"></i>
+              <span className="hidden sm:inline">Cetak</span>
             </button>
           </div>
         }

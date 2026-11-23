@@ -132,34 +132,35 @@ export default function DashboardPage() {
 
         {/* Hero KINRA Deep Green Grid Card */}
         <section className="bg-kinra-grid rounded-[28px] p-5 relative overflow-hidden shadow-xs text-white">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h2 className="text-[14px] font-bold text-white leading-tight">
-                <span className="block whitespace-nowrap">Pencatatan Logbook</span>
-                <span className="block whitespace-nowrap">Kegiatan Harian</span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[15px] sm:text-lg font-bold !text-white leading-snug">
+                Pencatatan Logbook Kegiatan Harian
               </h2>
-              <p className="text-xs text-emerald-100 mt-1.5 font-medium truncate">
+              <p className="text-xs text-emerald-100/90 mt-1 font-medium truncate">
                 Mentor: {profile?.mentor_name || 'RIZKY DELIANNGI'}
               </p>
             </div>
 
-            {!todayLog ? (
-              <Link
-                href={calendarToday()}
-                className="bg-white hover:bg-[#FDE9B4] text-[#0B6E6C] text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-xs transition shrink-0 flex items-center gap-1.5"
-              >
-                <i className="fa-solid fa-plus text-[10px]"></i>
-                <span>Catat Hari Ini</span>
-              </Link>
-            ) : (
-              <Link
-                href={calendarToday()}
-                className="bg-[#FDE9B4] hover:bg-white text-[#18181B] text-[11px] font-bold px-3.5 py-1.5 rounded-full shadow-xs transition shrink-0 flex items-center gap-1.5"
-              >
-                <i className="fa-solid fa-pen-to-square text-[10px]"></i>
-                <span>Edit Hari Ini</span>
-              </Link>
-            )}
+            <div className="shrink-0">
+              {!todayLog ? (
+                <Link
+                  href={calendarToday()}
+                  className="bg-white hover:bg-[#FDE9B4] text-[#0B6E6C] text-xs font-bold px-3.5 py-1.5 rounded-full shadow-xs transition shrink-0 inline-flex items-center gap-1.5"
+                >
+                  <i className="fa-solid fa-plus text-[10px]"></i>
+                  <span>Catat Hari Ini</span>
+                </Link>
+              ) : (
+                <Link
+                  href={calendarToday()}
+                  className="bg-[#FDE9B4] hover:bg-white text-[#18181B] text-xs font-bold px-3.5 py-1.5 rounded-full shadow-xs transition shrink-0 inline-flex items-center gap-1.5"
+                >
+                  <i className="fa-solid fa-pen-to-square text-[10px]"></i>
+                  <span>Edit Hari Ini</span>
+                </Link>
+              )}
+            </div>
           </div>
 
           {/* Dark Charcoal Inner Live Clock Card */}

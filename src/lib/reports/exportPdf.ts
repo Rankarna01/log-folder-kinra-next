@@ -1,43 +1,40 @@
-import { toPng } from 'html-to-image';
+import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 /**
  * Ekspor elemen lembar laporan ke file PDF berukuran A4 Landscape.
- * Menggunakan html-to-image dan jsPDF untuk hasil 1:1 identik dengan pratinjau di layar.
+ * Menggunakan html2canvas untuk merender DOM langsung dan jsPDF untuk membuat file PDF.
  */
 export async function exportReportToPdf(
   element: HTMLElement,
   filename = 'Laporan_Logbook_KINRA.pdf'
 ): Promise<void> {
-  // 1. Kloning elemen ke kontainer off-screen dengan lebar desktop A4 landscape standar (1060px)
-  // agar hasil cetak selalu tajam dan tidak terpengaruh zoom/skala layar mobile.
-  const clone = element.cloneNode(true) as HTMLElement;
-  clone.id = 'print-clone-export';
-  clone.style.transform = 'none';
-  clone.style.width = '1060px';
-  clone.style.minWidth = '1060px';
-  clone.style.maxWidth = '1060px';
-  clone.style.position = 'fixed';
-  clone.style.left = '-9999px';
-  clone.style.top = '0';
-  clone.style.zIndex = '-9999';
-  clone.style.backgroundColor = '#ffffff';
-  clone.style.borderRadius = '0px';
-  clone.style.boxShadow = 'none';
-  clone.style.padding = '24px 28px';
-
-  document.body.appendChild(clone);
+  // Simpan properti asli elemen
+  const originalTransform = element.style.transform;
+  const originalTransition = element.style.transition;
 
   try {
-    // 2. Render ke PNG berkualitas tinggi (retina pixel ratio 2x)
-    const dataUrl = await toPng(clone, {
-      quality: 0.98,
-      pixelRatio: 2,
+    // 1. Matikan transformasi sementara agar render 100% ukuran asli tanpa distorsi
+    element.style.transition = 'none';
+    element.style.transform = 'none';
+
+    // Beri jeda sejenak untuk reflow DOM
+    await new Promise((r) => setTimeout(r, 60));
+
+    // 2. Render elemen langsung ke Canvas menggunakan html2canvas
+    const canvas = await html2canvas(element, {
+      scale: 2, // Kualitas 2x Retina tajam
+      useCORS: true,
+      allowTaint: true,
       backgroundColor: '#ffffff',
-      cacheBust: true,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
     });
 
-    // 3. Buat dokumen A4 Landscape (297mm x 210mm)
+    const imgData = canvas.toDataURL('image/png', 1.0);
+
+    // 3. Masukkan gambar ke dokumen jsPDF A4 Landscape
     const pdf = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -47,27 +44,17 @@ export async function exportReportToPdf(
 
     const pageWidth = 297;
     const pageHeight = 210;
-    const margin = 8; // 8mm margin sekeliling
+    const margin = 8;
     const printWidth = pageWidth - margin * 2; // 281mm
+    const printHeight = (canvas.height * printWidth) / canvas.width;
 
-    const img = new Image();
-    img.src = dataUrl;
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('Gagal memuat raster gambar laporan'));
-    });
-
-    const imgWidth = img.naturalWidth || 1060;
-    const imgHeight = img.naturalHeight || 750;
-    const printHeight = (imgHeight * printWidth) / imgWidth;
-
-    // Jika muat dalam 1 lembar A4 landscape (dengan toleransi kecil)
-    if (printHeight <= pageHeight - margin * 2 + 10) {
+    // Jika muat dalam 1 halaman A4 landscape
+    if (printHeight <= pageHeight - margin * 2 + 15) {
       const actualHeight = Math.min(printHeight, pageHeight - margin * 2);
       const yOffset = margin + Math.max(0, (pageHeight - margin * 2 - actualHeight) / 2);
-      pdf.addImage(dataUrl, 'PNG', margin, yOffset, printWidth, actualHeight, undefined, 'FAST');
+      pdf.addImage(imgData, 'PNG', margin, yOffset, printWidth, actualHeight, undefined, 'FAST');
     } else {
-      // Jika melebihi 1 halaman, pecah halaman secara proporsional
+      // Jika lebih dari 1 halaman
       let heightLeft = printHeight;
       let position = margin;
       let page = 1;
@@ -76,7 +63,7 @@ export async function exportReportToPdf(
         if (page > 1) {
           pdf.addPage('a4', 'landscape');
         }
-        pdf.addImage(dataUrl, 'PNG', margin, position, printWidth, printHeight, undefined, 'FAST');
+        pdf.addImage(imgData, 'PNG', margin, position, printWidth, printHeight, undefined, 'FAST');
         heightLeft -= pageHeight - margin * 2;
         position -= pageHeight - margin * 2;
         page++;
@@ -85,8 +72,8 @@ export async function exportReportToPdf(
 
     pdf.save(filename);
   } finally {
-    if (clone.parentNode) {
-      clone.parentNode.removeChild(clone);
-    }
+    // Kembalikan transformasi asli
+    element.style.transform = originalTransform;
+    element.style.transition = originalTransition;
   }
 }

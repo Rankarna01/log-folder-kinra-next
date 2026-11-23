@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { nikLoginEmail } from '@/lib/auth/identifier';
+
+// NIK peserta: angka saja, panjang bebas
+const NIK_RE = /^\d+$/;
 
 /**
- * Pendaftaran akun oleh super admin, tanpa email.
- * - create : daftarkan akun mentor/peserta. Akun dibuat tanpa kata sandi dan ditandai
- *            pending_activation. Orangnya mengaktifkan sendiri lewat halaman /aktivasi.
- * - update : ubah data profil (nama, divisi, jabatan, mentor, dst).
+ * Pendaftaran akun oleh super admin, tanpa mengirim email.
+ * - create : daftarkan akun mentor (email) atau peserta (NIK). Akun dibuat tanpa kata sandi
+ *            dan ditandai pending_activation. Orangnya mengaktifkan sendiri lewat halaman login.
+ * - update : ubah data profil. Untuk peserta, mengubah NIK juga mengubah email login.
+ * - assign : tetapkan atau lepas mentor untuk beberapa anak magang.
  * SUPABASE_SERVICE_ROLE_KEY hanya dipakai di server.
  */
 
@@ -17,10 +22,12 @@ type Body = {
   profileId?: string;
   kind?: Kind;
   name?: string;
+  /** Mentor: email login. Peserta: email kontak (opsional). */
   email?: string;
   division?: string;
   position?: string;
   phone?: string;
+  /** NIK peserta (angka). */
   nimNik?: string;
   mentorId?: string | null;
   mentorName?: string | null;
@@ -73,33 +80,71 @@ export async function POST(req: Request) {
     if (!body.profileId) return NextResponse.json({ error: 'Profil tidak valid.' }, { status: 400 });
     const name = (body.name ?? '').trim();
     if (!name) return NextResponse.json({ error: 'Nama wajib diisi.' }, { status: 400 });
-    const { error } = await admin
-      .from('profiles')
-      .update({
-        name,
-        division: body.division || null,
-        position: body.position || null,
-        phone: body.phone || null,
-        ...(body.nimNik !== undefined ? { nim_nik: body.nimNik || null } : {}),
-        mentor_id: body.mentorId || null,
-        mentor_name: body.mentorName || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', body.profileId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const { data: target } = await admin.from('profiles').select('role').eq('id', body.profileId).maybeSingle();
+    const hasNik = target?.role === 'participant' || target?.role === 'mentor';
+    if (target?.role === 'admin') return NextResponse.json({ error: 'Akun admin tidak diubah dari menu ini.' }, { status: 403 });
+
+    const patch: Record<string, unknown> = {
+      name,
+      division: body.division || null,
+      position: body.position || null,
+      phone: body.phone || null,
+      mentor_id: body.mentorId || null,
+      mentor_name: body.mentorName || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (hasNik) {
+      const nik = (body.nimNik ?? '').trim();
+      if (body.nimNik !== undefined) {
+        if (!NIK_RE.test(nik)) return NextResponse.json({ error: 'NIK wajib diisi dan hanya berisi angka.' }, { status: 400 });
+        const { data: dup } = await admin
+          .from('profiles')
+          .select('id')
+          .eq('nim_nik', nik)
+          .neq('id', body.profileId)
+          .maybeSingle();
+        if (dup) return NextResponse.json({ error: 'NIK ini sudah dipakai peserta lain.' }, { status: 409 });
+        // Email login peserta mengikuti NIK
+        const { error: authErr } = await admin.auth.admin.updateUserById(body.profileId, {
+          email: nikLoginEmail(nik),
+          email_confirm: true,
+        });
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        patch.nim_nik = nik;
+      }
+      if (body.email !== undefined) {
+        const contact = (body.email ?? '').trim().toLowerCase();
+        if (contact && !EMAIL_RE.test(contact)) return NextResponse.json({ error: 'Format email tidak valid.' }, { status: 400 });
+        patch.email = contact;
+      }
+    }
+
+    const { error } = await admin.from('profiles').update(patch).eq('id', body.profileId);
+    if (error) {
+      const dupKey = error.message.includes('nim_nik') || error.code === '23505';
+      return NextResponse.json({ error: dupKey ? 'NIK ini sudah terdaftar.' : error.message }, { status: dupKey ? 409 : 500 });
+    }
     return NextResponse.json({ ok: true });
   }
 
-  // ---- daftarkan akun baru (tanpa email)
+  // ---- daftarkan akun baru (login dengan NIK; email hanya kontak)
   const kind: Kind = body.kind === 'mentor' ? 'mentor' : 'participant';
   const name = (body.name ?? '').trim();
-  const email = (body.email ?? '').trim().toLowerCase();
+  const contact = (body.email ?? '').trim().toLowerCase();
   if (!name) return NextResponse.json({ error: 'Nama wajib diisi.' }, { status: 400 });
-  if (!EMAIL_RE.test(email)) return NextResponse.json({ error: 'Format email tidak valid.' }, { status: 400 });
+
+  const nik = (body.nimNik ?? '').trim();
+  if (!NIK_RE.test(nik)) return NextResponse.json({ error: 'NIK wajib diisi dan hanya berisi angka.' }, { status: 400 });
+  if (contact && !EMAIL_RE.test(contact)) return NextResponse.json({ error: 'Format email tidak valid.' }, { status: 400 });
+  const { data: dup } = await admin.from('profiles').select('id').eq('nim_nik', nik).maybeSingle();
+  if (dup) return NextResponse.json({ error: 'NIK ini sudah terdaftar.' }, { status: 409 });
+  const loginEmail = nikLoginEmail(nik);
 
   const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (listErr) return NextResponse.json({ error: listErr.message }, { status: 500 });
-  const existing = list.users.find((u) => (u.email ?? '').toLowerCase() === email);
+  const existing = list.users.find((u) => (u.email ?? '').toLowerCase() === loginEmail);
 
   let userId = existing?.id;
   let status: 'created' | 'exists' = 'created';
@@ -107,12 +152,12 @@ export async function POST(req: Request) {
   if (existing) {
     const { data: prof } = await admin.from('profiles').select('role').eq('id', existing.id).maybeSingle();
     if (prof?.role === 'admin') {
-      return NextResponse.json({ error: 'Email ini milik akun super admin.' }, { status: 409 });
+      return NextResponse.json({ error: 'Data ini milik akun super admin.' }, { status: 409 });
     }
     status = 'exists';
   } else {
     const { data, error } = await admin.auth.admin.createUser({
-      email,
+      email: loginEmail,
       email_confirm: true,
       user_metadata: { name, pending_activation: true },
     });
@@ -124,23 +169,26 @@ export async function POST(req: Request) {
 
   const profile: Record<string, unknown> = {
     id: userId,
-    email,
+    email: contact,
     name,
     role: kind,
     division: body.division || null,
     position: body.position || null,
     phone: body.phone || null,
+    nim_nik: nik,
     updated_at: new Date().toISOString(),
   };
   if (kind === 'participant') {
-    profile.nim_nik = body.nimNik || null;
     profile.mentor_id = body.mentorId || null;
     profile.mentor_name = body.mentorName || null;
     profile.institution = 'PT Kawasan Industri Nusantara (KINRA Sei Mangkei)';
   }
 
   const { error: profErr } = await admin.from('profiles').upsert(profile);
-  if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 });
+  if (profErr) {
+    const dupKey = profErr.message.includes('nim_nik') || profErr.code === '23505';
+    return NextResponse.json({ error: dupKey ? 'NIK ini sudah terdaftar.' : profErr.message }, { status: dupKey ? 409 : 500 });
+  }
 
-  return NextResponse.json({ ok: true, status, email });
+  return NextResponse.json({ ok: true, status, identifier: nik });
 }

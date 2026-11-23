@@ -79,7 +79,7 @@ export default function AdminInternsPage() {
     return interns.filter((p) => {
       if (mentorFilter !== 'all' && p.mentor_id !== mentorFilter) return false;
       if (!q) return true;
-      return [p.name, p.email, p.division, p.mentor_name].some((v) => norm(v).includes(q));
+      return [p.name, p.nim_nik, p.email, p.division, p.mentor_name].some((v) => norm(v).includes(q));
     });
   }, [interns, query, mentorFilter]);
 
@@ -121,6 +121,8 @@ export default function AdminInternsPage() {
       if (draft.profileId) {
         await postAccount({
           action: 'update',
+          nimNik: draft.nimNik.trim(),
+          email: draft.email.trim().toLowerCase(),
           profileId: draft.profileId,
           name: draft.name.trim(),
           division: draft.division,
@@ -145,8 +147,8 @@ export default function AdminInternsPage() {
         });
         toast.success(
           res.status === 'exists'
-            ? 'Email ini sudah terdaftar. Data profilnya diperbarui.'
-            : `${draft.name.trim()} terdaftar. Peserta mengaktifkan akun di halaman Aktivasi.`,
+            ? 'NIK ini sudah terdaftar. Data profilnya diperbarui.'
+            : `${draft.name.trim()} terdaftar. Peserta masuk dengan NIK di halaman login.`,
           'Anak magang ditambahkan'
         );
       }
@@ -166,7 +168,7 @@ export default function AdminInternsPage() {
       <PageHead
         eyebrow="Super admin · Data anak magang"
         title={`${interns.length} peserta magang terdaftar`}
-        lead="Daftarkan peserta dengan email, lalu pilih mentor pembimbingnya. Peserta mengaktifkan akun sendiri lewat halaman Aktivasi."
+        lead="Daftarkan peserta dengan NIK, lalu pilih mentor pembimbingnya. Peserta masuk dengan NIK dan membuat kata sandi sendiri di halaman login."
         actions={
           <button type="button" className="kc-btn kc-btn-primary" onClick={openNew} disabled={activeMentors.length === 0}>
             <i className="fa-solid fa-user-plus" aria-hidden="true"></i> Tambah anak magang
@@ -190,7 +192,7 @@ export default function AdminInternsPage() {
       <div className="kc-toolbar">
         <label className="kc-search">
           <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama, email…" aria-label="Cari anak magang" />
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama, NIK, email…" aria-label="Cari anak magang" />
         </label>
         <select aria-label="Filter mentor" value={mentorFilter} onChange={(e) => setMentorFilter(e.target.value)} className="kc-input-inline">
           <option value="all">Semua mentor</option>
@@ -216,7 +218,8 @@ export default function AdminInternsPage() {
               <ul className="kc-info">
                 <li><i className="fa-solid fa-building" aria-hidden="true"></i><span>{p.division || '–'}</span></li>
                 <li><i className="fa-solid fa-user-tie" aria-hidden="true"></i><span>{p.mentor_name || 'Belum memilih mentor'}</span></li>
-                <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span><a href={`mailto:${p.email}`}>{p.email}</a></span></li>
+                <li><i className="fa-regular fa-id-card" aria-hidden="true"></i><span>NIK {p.nim_nik || '–'}</span></li>
+                {p.email && <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span><a href={`mailto:${p.email}`}>{p.email}</a></span></li>}
               </ul>
               <div className="kc-card-foot" style={{ gap: 8 }}>
                 <button type="button" className="kc-btn" onClick={() => openEdit(p)}>
@@ -240,11 +243,21 @@ export default function AdminInternsPage() {
                 <input id="i-name" required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Contoh: Muhammad Randy Karna" />
               </div>
               <div className="kc-field">
-                <label htmlFor="i-mail">Email <span className="kc-req">*</span></label>
-                <input id="i-mail" type="email" required value={draft.email} disabled={!!draft.profileId} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="nama@email.com" />
-                <p className="kc-help">
-                  {draft.profileId ? 'Email tidak bisa diubah dari sini.' : 'Email ini menjadi username login peserta.'}
-                </p>
+                <label htmlFor="i-nik">NIK <span className="kc-req">*</span></label>
+                <input
+                  id="i-nik"
+                  inputMode="numeric"
+                  required
+                  value={draft.nimNik}
+                  onChange={(e) => setDraft({ ...draft, nimNik: e.target.value.replace(/\D/g, '') })}
+                  placeholder="NIK (angka)"
+                />
+                <p className="kc-help">NIK ini menjadi username login peserta. Harus unik dan hanya angka.</p>
+              </div>
+              <div className="kc-field">
+                <label htmlFor="i-mail">Email kontak (opsional)</label>
+                <input id="i-mail" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="nama@email.com" />
+                <p className="kc-help">Hanya untuk kontak. Tidak dipakai untuk masuk dan tidak dikirimi email.</p>
               </div>
               <div className="kc-field">
                 <label htmlFor="i-div">Divisi penempatan</label>

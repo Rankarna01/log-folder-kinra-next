@@ -8,12 +8,14 @@ import { useDivisions } from '@/lib/divisions';
 import { PageHead, StatTiles, StatTile, Chip, Skeleton, EmptyState } from '@/components/ui/Kit';
 import type { Mentor, Profile } from '@/types/database';
 import { MentorDetailModal } from '@/components/admin/MentorDetailModal';
+import { useConfirm } from '@/components/feedback/ConfirmProvider';
 
 type Draft = {
   id?: string;
   name: string;
   division: string;
   position: string;
+  nik: string;
   email: string;
   phone: string;
   is_active: boolean;
@@ -24,6 +26,7 @@ const EMPTY_DRAFT: Draft = {
   name: '',
   division: '',
   position: '',
+  nik: '',
   email: '',
   phone: '',
   is_active: true,
@@ -47,6 +50,7 @@ export default function AdminMentorsPage() {
   const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { divisions } = useDivisions();
 
   const [loading, setLoading] = useState(true);
@@ -59,6 +63,9 @@ export default function AdminMentorsPage() {
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [people, setPeople] = useState<Profile[]>([]);
+  const [mentorAccounts, setMentorAccounts] = useState<{ id: string; name: string; email: string | null; nim_nik: string | null }[]>([]);
+  const accountOf = (m: { name: string; email: string | null }) =>
+    mentorAccounts.find((a) => (m.email && a.email === m.email) || a.name === m.name) ?? null;
   const [detailId, setDetailId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,10 +76,12 @@ export default function AdminMentorsPage() {
         router.push('/login');
         return;
       }
-      const [{ data: rows, error }, { data: people }] = await Promise.all([
+      const [{ data: rows, error }, { data: people }, { data: accounts }] = await Promise.all([
         supabase.from('mentors').select('*').order('name'),
-        supabase.from('profiles').select('id,name,email,division,position,mentor_id,mentor_name').eq('role', 'participant').order('name'),
+        supabase.from('profiles').select('id,name,email,nim_nik,division,position,mentor_id,mentor_name').eq('role', 'participant').order('name'),
+        supabase.from('profiles').select('id,name,email,nim_nik').eq('role', 'mentor'),
       ]);
+      setMentorAccounts((accounts as typeof mentorAccounts) || []);
       if (!active) return;
       if (error) toast.error(error.message, 'Data mentor gagal dimuat');
       setMentors((rows as Mentor[]) || []);
@@ -125,10 +134,11 @@ export default function AdminMentorsPage() {
       name: m.name,
       division: m.division,
       position: m.position,
+      nik: accountOf(m)?.nim_nik || '',
       email: m.email || '',
       phone: m.phone || '',
       is_active: m.is_active,
-      invite: false,
+      invite: true,
     });
 
   const save = async (e: React.FormEvent) => {
@@ -145,7 +155,6 @@ export default function AdminMentorsPage() {
       is_active: draft.is_active,
     };
 
-    let mentorId = draft.id;
     if (draft.id) {
       const { error } = await supabase.from('mentors').update(payload).eq('id', draft.id);
       if (error) {
@@ -154,42 +163,44 @@ export default function AdminMentorsPage() {
         return;
       }
     } else {
-      const { data, error } = await supabase.from('mentors').insert(payload).select('id').single();
-      if (error || !data) {
+      const { error } = await supabase.from('mentors').insert(payload);
+      if (error) {
         setSaving(false);
-        toast.error(error?.message ?? 'Mentor gagal ditambahkan', 'Gagal menyimpan mentor');
+        toast.error(error.message ?? 'Mentor gagal ditambahkan', 'Gagal menyimpan mentor');
         return;
       }
-      mentorId = data.id;
     }
 
-    if (draft.invite) {
-      if (!payload.email) {
-        setSaving(false);
-        toast.warning('Isi email mentor agar akun login bisa dibuat.', 'Akun belum dibuat');
-        return;
+    const nik = draft.nik.trim();
+    if (!/^\d+$/.test(nik)) {
+      setSaving(false);
+      toast.warning('NIK wajib diisi dan hanya berisi angka.', 'NIK belum valid');
+      return;
+    }
+    try {
+      const account = draft.id ? accountOf({ name: draft.name, email: draft.email }) : null;
+      const common = {
+        name: payload.name,
+        email: payload.email,
+        division: payload.division,
+        position: payload.position,
+        phone: payload.phone,
+        nimNik: nik,
+      };
+      if (account) {
+        await postAccount({ action: 'update', profileId: account.id, ...common });
+        toast.success(`Data ${payload.name} diperbarui.`);
+      } else {
+        const res = await postAccount({ action: 'create', kind: 'mentor', ...common });
+        toast.success(
+          res.status === 'exists'
+            ? `${payload.name} sudah punya akun. Data profilnya diperbarui.`
+            : `${payload.name} terdaftar. Mentor masuk dengan NIK dan membuat kata sandi di halaman login.`,
+          'Mentor ditambahkan'
+        );
       }
-      try {
-        const res = await postAccount({
-          action: 'create',
-          kind: 'mentor',
-          name: payload.name,
-          email: payload.email,
-          division: payload.division,
-          position: payload.position,
-          phone: payload.phone,
-          mentorId,
-        });
-        if (res.status === 'exists') {
-          toast.info(`${payload.name} sudah punya akun. Data profilnya diperbarui.`);
-        } else {
-          toast.success(`${payload.name} terdaftar. Mentor mengaktifkan akun di halaman Aktivasi.`, 'Mentor ditambahkan');
-        }
-      } catch (err) {
-        toast.error((err as Error).message, 'Akun gagal dibuat');
-      }
-    } else {
-      toast.success(draft.id ? `Data ${payload.name} diperbarui.` : `${payload.name} ditambahkan sebagai mentor.`);
+    } catch (err) {
+      toast.error((err as Error).message, 'Akun gagal disimpan');
     }
 
     setSaving(false);
@@ -212,7 +223,7 @@ export default function AdminMentorsPage() {
     const msg = n > 0
       ? `Hapus ${m.name}? ${n} peserta yang dibimbing akan kehilangan mentor. Tindakan ini tidak bisa dibatalkan.`
       : `Hapus ${m.name}? Tindakan ini tidak bisa dibatalkan.`;
-    if (!window.confirm(msg)) return;
+    if (!(await confirm({ message: msg, confirmLabel: 'Hapus mentor', danger: true }))) return;
     const { error } = await supabase.from('mentors').delete().eq('id', m.id);
     if (error) {
       toast.error(error.message, 'Mentor gagal dihapus');
@@ -229,7 +240,7 @@ export default function AdminMentorsPage() {
       <PageHead
         eyebrow="Super admin · Data mentor"
         title={`${mentors.length} mentor terdaftar, ${totals.active} aktif`}
-        lead="Daftarkan mentor dengan email. Mentor mengaktifkan akunnya sendiri lewat halaman Aktivasi."
+        lead="Daftarkan mentor dengan NIK. Mentor masuk dengan NIK dan membuat kata sandinya sendiri di halaman login."
         actions={
           <button type="button" className="kc-btn kc-btn-primary" onClick={openNew}>
             <i className="fa-solid fa-plus" aria-hidden="true"></i> Tambah mentor
@@ -246,7 +257,7 @@ export default function AdminMentorsPage() {
       <div className="kc-toolbar">
         <label className="kc-search">
           <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama, posisi, email…" aria-label="Cari mentor" />
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama, NIK, posisi, email…" aria-label="Cari mentor" />
         </label>
         <select aria-label="Filter divisi" value={division} onChange={(e) => setDivision(e.target.value)} className="kc-input-inline">
           <option value="all">Semua divisi</option>
@@ -287,7 +298,8 @@ export default function AdminMentorsPage() {
 
                 <ul className="kc-info">
                   <li><i className="fa-solid fa-building" aria-hidden="true"></i><span>{m.division}</span></li>
-                  <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span>{m.email ? <a href={`mailto:${m.email}`}>{m.email}</a> : '–'}</span></li>
+                  <li><i className="fa-regular fa-id-card" aria-hidden="true"></i><span>NIK {accountOf(m)?.nim_nik || '–'}</span></li>
+                  {m.email && <li><i className="fa-regular fa-envelope" aria-hidden="true"></i><span><a href={`mailto:${m.email}`}>{m.email}</a></span></li>}
                   <li><i className="fa-solid fa-phone" aria-hidden="true"></i><span>{m.phone ? <a href={`tel:${m.phone}`}>{m.phone}</a> : '–'}</span></li>
                 </ul>
 
@@ -355,9 +367,14 @@ export default function AdminMentorsPage() {
                 <input id="m-pos" value={draft.position} onChange={(e) => setDraft({ ...draft, position: e.target.value })} placeholder="Contoh: Manajer Operasional Kawasan KEK" />
               </div>
               <div className="kc-field">
-                <label htmlFor="m-mail">Email <span className="kc-req">*</span></label>
-                <input id="m-mail" type="email" required={draft.invite} value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="nama@kinra.co.id" />
-                <p className="kc-help">Email ini menjadi username login mentor.</p>
+                <label htmlFor="m-nik">NIK <span className="kc-req">*</span></label>
+                <input id="m-nik" inputMode="numeric" required value={draft.nik} onChange={(e) => setDraft({ ...draft, nik: e.target.value.replace(/\D/g, '') })} placeholder="NIK (angka)" />
+                <p className="kc-help">NIK ini menjadi username login mentor.</p>
+              </div>
+              <div className="kc-field">
+                <label htmlFor="m-mail">Email kontak (opsional)</label>
+                <input id="m-mail" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="nama@kinra.co.id" />
+                <p className="kc-help">Hanya untuk kontak. Tidak dipakai untuk masuk.</p>
               </div>
               <div className="kc-field">
                 <label htmlFor="m-tel">Telepon</label>
@@ -368,17 +385,10 @@ export default function AdminMentorsPage() {
                 <span>Aktif, tampil di pilihan mentor</span>
               </label>
 
-              {!draft.id && (
-                <label className="kc-check kc-account-box">
-                  <input type="checkbox" checked={draft.invite} onChange={(e) => setDraft({ ...draft, invite: e.target.checked })} />
-                  <span>Daftarkan akun login (mentor aktivasi sendiri lewat halaman Aktivasi)</span>
-                </label>
-              )}
-
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
                 <button type="button" className="kc-btn" onClick={() => setDraft(null)}>Batal</button>
                 <button type="submit" className="kc-btn kc-btn-primary" disabled={saving}>
-                  {saving ? 'Menyimpan…' : draft.invite && !draft.id ? 'Simpan & daftarkan akun' : 'Simpan'}
+                  {saving ? 'Menyimpan…' : draft.id ? 'Simpan' : 'Simpan & daftarkan akun'}
                 </button>
               </div>
             </form>

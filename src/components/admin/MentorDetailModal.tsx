@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/components/feedback/FeedbackProvider';
+import { useConfirm } from '@/components/feedback/ConfirmProvider';
 import type { Mentor, Profile } from '@/types/database';
 
 type Props = {
@@ -23,9 +24,10 @@ async function assignRequest(profileIds: string[], mentorId: string | null, ment
   if (!res.ok) throw new Error(json.error || 'Perubahan gagal disimpan.');
 }
 
-/** Detail mentor: lihat anak magang bimbingan, lepas, dan tambahkan anak magang baru. */
+/** Detail mentor: lihat anak magang bimbingan, lepas, dan tambahkan anak magang baru. Pencarian lewat nama, NIK, email, dan divisi. */
 export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -41,17 +43,24 @@ export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props)
     };
   }, [onClose]);
 
-  const mine = useMemo(() => people.filter((p) => p.mentor_id === mentor.id), [people, mentor.id]);
-  const unassigned = useMemo(() => people.filter((p) => !p.mentor_id).length, [people]);
+  const q = norm(query);
+  const matches = (p: Profile) =>
+    !q || [p.name, p.nim_nik, p.email, p.division, p.position, p.mentor_name].some((v) => norm(v).includes(q));
+
+  const mine = useMemo(
+    () => people.filter((p) => p.mentor_id === mentor.id).filter(matches).sort((a, b) => a.name.localeCompare(b.name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [people, mentor.id, q]
+  );
+  const unassignedTotal = useMemo(() => people.filter((p) => !p.mentor_id).length, [people]);
+  const mineTotal = useMemo(() => people.filter((p) => p.mentor_id === mentor.id).length, [people, mentor.id]);
 
   // Hanya anak magang yang belum punya mentor yang bisa ditambahkan
-  const candidates = useMemo(() => {
-    const q = norm(query);
-    return people
-      .filter((p) => !p.mentor_id)
-      .filter((p) => !q || [p.name, p.email, p.division].some((v) => norm(v).includes(q)))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [people, query]);
+  const candidates = useMemo(
+    () => people.filter((p) => !p.mentor_id).filter(matches).sort((a, b) => a.name.localeCompare(b.name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [people, q]
+  );
 
   const run = async (ids: string[], attach: boolean, label: string) => {
     if (ids.length === 0) return;
@@ -71,10 +80,12 @@ export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props)
   const togglePick = (id: string) =>
     setPicked((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
 
-  const release = (p: Profile) => {
-    if (!window.confirm(`Lepas ${p.name} dari bimbingan ${mentor.name}?`)) return;
+  const release = async (p: Profile) => {
+    if (!(await confirm({ message: `${p.name} akan dilepas dari bimbingan ${mentor.name}.`, confirmLabel: 'Lepas', danger: true }))) return;
     run([p.id], false, `${p.name} dilepas dari bimbingan.`);
   };
+
+  const detailLine = (p: Profile) => [p.division || '–', `NIK ${p.nim_nik || '–'}`, p.email].filter(Boolean).join(' · ');
 
   return (
     <div className="kc-modal-backdrop" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -93,15 +104,30 @@ export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props)
         </div>
 
         <div className="kc-stats" style={{ gridTemplateColumns: '1fr 1fr 1fr', marginBottom: 16 }}>
-          <div><span>Bimbingan</span><b>{mine.length}</b></div>
-          <div><span>Belum punya mentor</span><b>{unassigned}</b></div>
+          <div><span>Bimbingan</span><b>{mineTotal}</b></div>
+          <div><span>Belum punya mentor</span><b>{unassignedTotal}</b></div>
           <div><span>Status</span><b style={{ fontSize: 14 }}>{mentor.is_active ? 'Aktif' : 'Nonaktif'}</b></div>
         </div>
 
+        <label className="kc-search" style={{ marginBottom: 12 }}>
+          <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari nama, NIK, email, atau divisi…"
+            aria-label="Cari anak magang berdasarkan nama atau NIK"
+          />
+        </label>
+
         <section style={{ marginBottom: 18 }}>
-          <p className="kc-eyebrow" style={{ marginBottom: 8 }}>Anak magang bimbingan ({mine.length})</p>
+          <p className="kc-eyebrow" style={{ marginBottom: 8 }}>
+            Anak magang bimbingan ({mine.length}{q ? ` dari ${mineTotal}` : ''})
+          </p>
           {mine.length === 0 ? (
-            <p className="kc-muted kc-small">Belum ada anak magang yang dibimbing mentor ini.</p>
+            <p className="kc-muted kc-small">
+              {mineTotal === 0 ? 'Belum ada anak magang yang dibimbing mentor ini.' : 'Tidak ada anak magang bimbingan yang cocok.'}
+            </p>
           ) : (
             <ul className="kc-attn">
               {mine.map((p) => (
@@ -109,7 +135,7 @@ export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props)
                   <div className="kc-avatar" aria-hidden="true">{p.name.charAt(0).toUpperCase()}</div>
                   <div>
                     <b>{p.name}</b>
-                    <small>{p.division || '–'} · {p.email}</small>
+                    <small>{detailLine(p)}</small>
                   </div>
                   <button type="button" className="kc-btn kc-btn-danger" disabled={saving} onClick={() => release(p)}>
                     <i className="fa-solid fa-link-slash" aria-hidden="true"></i> Lepas
@@ -122,7 +148,7 @@ export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props)
 
         <section>
           <div className="kc-card-row" style={{ marginBottom: 8 }}>
-            <p className="kc-eyebrow" style={{ margin: 0 }}>Tambahkan anak magang</p>
+            <p className="kc-eyebrow" style={{ margin: 0 }}>Tambahkan anak magang ({candidates.length} belum punya mentor)</p>
             <button
               type="button"
               className="kc-btn kc-btn-primary"
@@ -132,11 +158,6 @@ export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props)
               <i className="fa-solid fa-user-plus" aria-hidden="true"></i> Tambahkan terpilih ({picked.length})
             </button>
           </div>
-
-          <label className="kc-search" style={{ marginBottom: 10 }}>
-            <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama, email, divisi…" aria-label="Cari anak magang" />
-          </label>
 
           {candidates.length === 0 ? (
             <p className="kc-muted kc-small">Tidak ada anak magang yang cocok.</p>
@@ -156,9 +177,9 @@ export function MentorDetailModal({ mentor, people, onClose, onChanged }: Props)
                     />
                     <div>
                       <b>{p.name}</b>
-                      <small>{p.division || '–'} · {p.email}</small>
+                      <small>{detailLine(p)}</small>
                     </div>
-                      <span className="kc-chip kc-chip-na">Belum punya mentor</span>
+                    <span className="kc-chip kc-chip-na">Belum punya mentor</span>
                     <button
                       type="button"
                       className="kc-btn"

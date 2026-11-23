@@ -369,27 +369,27 @@ export function TopBar({
         <button
           type="button"
           onClick={toggleSidebar}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-600 hover:text-zinc-900 hover:bg-black/5 active:scale-95 transition cursor-pointer shrink-0"
+          className="kc-topbar-btn cursor-pointer shrink-0"
           aria-label={collapsed ? 'Perlebar sidebar' : 'Ciutkan sidebar'}
           title={collapsed ? 'Perlebar sidebar' : 'Ciutkan sidebar'}
         >
-          <i className="fa-solid fa-bars text-base" aria-hidden="true"></i>
+          <i className="fa-solid fa-bars text-sm" aria-hidden="true"></i>
         </button>
 
         {/* Breadcrumb info */}
         <div className="flex items-center gap-2 min-w-0 text-xs">
-          <span className="text-[10px] md:text-[11px] font-bold text-zinc-500 tracking-wider uppercase font-mono shrink-0">
+          <span className="kc-topbar-eyebrow text-[10px] md:text-[11px] shrink-0">
             {section}
           </span>
-          <span className="text-zinc-400 font-light text-xs">/</span>
-          <span className="text-xs md:text-sm font-semibold text-zinc-800 tracking-tight truncate">
+          <span className="font-light text-xs opacity-40">/</span>
+          <span className="kc-topbar-title text-xs md:text-sm truncate">
             {title} · Peran: {roleInfo.desc}
           </span>
         </div>
       </div>
 
-      {/* Sisi Kanan: Notifikasi, Tema Gelap, User Profile */}
-      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-3">
+      {/* Sisi Kanan: Notifikasi & User Profile */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-3">
         {/* Tombol OneSeiMangkei SEZ di-hide sesuai instruksi pengguna */}
         {/* <a href="https://onesimangkei.id" target="_blank" rel="noreferrer" className="hidden ...">OneSeiMangkei SEZ ↗</a> */}
 
@@ -398,7 +398,7 @@ export function TopBar({
           <button
             type="button"
             onClick={() => setNotifOpen(!notifOpen)}
-            className="w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-zinc-200/90 shadow-2xs flex items-center justify-center text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 transition cursor-pointer relative"
+            className="kc-topbar-btn cursor-pointer relative"
             aria-label="Pemberitahuan"
             title="Pemberitahuan"
           >
@@ -406,13 +406,13 @@ export function TopBar({
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-zinc-200/80 p-3 z-50 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
-              <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                <span className="font-bold text-zinc-800">Pemberitahuan</span>
-                <span className="text-[10px] text-zinc-400 font-medium">Semua terbaca</span>
+            <div className="kc-dropdown absolute right-0 mt-2 w-72 rounded-2xl p-3 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--line)]">
+                <span className="font-bold text-xs" style={{ color: 'var(--ink)' }}>Pemberitahuan</span>
+                <span className="text-[10px] font-medium" style={{ color: 'var(--muted)' }}>Semua terbaca</span>
               </div>
-              <div className="py-4 text-center text-zinc-500 text-[11px]">
-                <i className="fa-regular fa-bell-slash text-zinc-300 text-xl mb-1.5 block"></i>
+              <div className="py-5 text-center text-[11.5px]" style={{ color: 'var(--muted)' }}>
+                <i className="fa-regular fa-bell-slash text-xl mb-1.5 block opacity-40"></i>
                 Tidak ada pemberitahuan baru
               </div>
             </div>
@@ -420,13 +420,13 @@ export function TopBar({
         </div>
 
         {/* Divider Vertikal */}
-        <div className="h-6 w-px bg-zinc-300/80 mx-1 hidden sm:block" aria-hidden="true" />
+        <div className="h-6 w-px bg-[var(--line-2)] mx-0.5 hidden sm:block" aria-hidden="true" />
 
         {/* Profile Card & Avatar */}
         <div className="relative" ref={profileMenuRef}>
           <div
             onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-            className="flex items-center gap-2.5 pl-1 py-1 rounded-full hover:bg-white/40 transition cursor-pointer"
+            className="flex items-center gap-2.5 pl-1.5 py-1 rounded-full hover:bg-[var(--surface-3)] transition cursor-pointer select-none"
             role="button"
             tabIndex={0}
             aria-expanded={profileMenuOpen}
@@ -434,17 +434,17 @@ export function TopBar({
           >
             <div className="hidden sm:flex flex-col items-end leading-tight">
               <div className="flex items-center gap-1.5">
-                <span className="font-bold text-xs text-zinc-900 tracking-tight">{shortName}</span>
-                <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border border-zinc-300/80 bg-white/80 text-zinc-700 tracking-wider shadow-2xs">
+                <span className="kc-topbar-user-name text-xs">{userName}</span>
+                <span className="kc-topbar-badge px-2 py-0.5 rounded-full">
                   {roleInfo.badge}
                 </span>
               </div>
-              <span className="text-[10px] text-zinc-500 font-mono tracking-tight mt-0.5">
+              <span className="kc-topbar-user-meta mt-0.5">
                 {nikDisplay}
               </span>
             </div>
 
-            <div className="w-9 h-9 rounded-full bg-[#008187] text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs ring-2 ring-white/90 overflow-hidden">
+            <div className="w-9 h-9 rounded-full bg-[var(--tosca)] text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs ring-2 ring-white/20 overflow-hidden">
               {avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
@@ -456,17 +456,17 @@ export function TopBar({
 
           {/* Profile Dropdown Menu */}
           {profileMenuOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-zinc-200/80 p-2 z-50 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
-              <div className="px-3 py-2 border-b border-zinc-100">
-                <p className="font-bold text-zinc-900 truncate">{userName}</p>
-                <p className="text-[11px] text-zinc-500 font-mono truncate">{nikDisplay}</p>
+            <div className="kc-dropdown absolute right-0 mt-2 w-64 rounded-2xl p-2 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="kc-dropdown-head">
+                <p className="kc-dropdown-name truncate">{userName}</p>
+                <p className="kc-dropdown-meta truncate">{nikDisplay}</p>
               </div>
 
               <div className="py-1">
                 <Link
                   href="/profile"
                   onClick={() => setProfileMenuOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-zinc-700 hover:bg-[#F0F4F3] hover:text-[#008187] font-semibold transition"
+                  className="kc-dropdown-item"
                 >
                   <i className="fa-regular fa-user text-xs w-4 text-center"></i>
                   <span>Profil Pengguna</span>
@@ -474,14 +474,14 @@ export function TopBar({
               </div>
 
               {onLogout && (
-                <div className="pt-1 border-t border-zinc-100">
+                <div className="pt-1 border-t border-[var(--line)]">
                   <button
                     type="button"
                     onClick={() => {
                       setProfileMenuOpen(false);
                       onLogout();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50 font-semibold transition cursor-pointer text-left"
+                    className="kc-dropdown-item danger w-full text-left cursor-pointer"
                   >
                     <i className="fa-solid fa-right-from-bracket text-xs w-4 text-center"></i>
                     <span>Keluar Akun</span>

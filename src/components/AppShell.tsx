@@ -116,7 +116,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const division = profile?.division || 'Divisi Teknologi Informasi';
 
   return (
-    <div className="min-h-screen bg-[#F0F4F3] flex flex-col md:flex-row antialiased text-[#111827]">
+    <div className="min-h-screen bg-[var(--page)] flex flex-col md:flex-row antialiased text-[var(--ink)] font-sans">
       {/* Desktop Sidebar (Laptop / PC) */}
       <Sidebar
         userRole={role}

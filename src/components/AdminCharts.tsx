@@ -171,7 +171,7 @@ export function AdminCharts() {
 
         <div className="kc-card">
           <div>
-            <h3 className="kc-section-title">Beban bimbingan mentor</h3>
+            <h3 className="kc-section-title">Peserta bimbingan mentor</h3>
             <p className="kc-muted kc-small" style={{ margin: '2px 0 0' }}>Jumlah peserta per mentor pembimbing</p>
           </div>
           {d.byMentor.length === 0 ? (

@@ -90,10 +90,10 @@ export function RegisterForm({ onRegistered }: Props) {
         </div>
 
         <div className="auth-col">
-          <AuthField id="reg-email" label="Email kontak (opsional)" type="email" value={email} onChange={setEmail} placeholder="nama@email.com" icon="fa-envelope" autoComplete="email" />
+          <AuthField id="reg-email" label="Email kontak (opsional)" type="email" value={email} onChange={setEmail} placeholder="nama@email.com" icon="fa-envelope" autoComplete="email" required={false} />
         </div>
         <div className="auth-col">
-          <AuthField id="reg-phone" label="Telepon (opsional)" type="text" value={phone} onChange={setPhone} placeholder="08xxxxxxxxxx" icon="fa-phone" autoComplete="tel" />
+          <AuthField id="reg-phone" label="Telepon (opsional)" type="text" value={phone} onChange={setPhone} placeholder="08xxxxxxxxxx" icon="fa-phone" autoComplete="tel" required={false} />
         </div>
 
         <div className="auth-col">
@@ -111,7 +111,7 @@ export function RegisterForm({ onRegistered }: Props) {
           </div>
         </div>
         <div className="auth-col">
-          <AuthField id="reg-pos" label="Posisi / jabatan" value={position} onChange={setPosition} placeholder="Contoh: Staf Magang" icon="fa-briefcase" />
+          <AuthField id="reg-pos" label="Posisi / jabatan (opsional)" value={position} onChange={setPosition} placeholder="Contoh: Staf Magang" icon="fa-briefcase" required={false} />
         </div>
 
         <div className="auth-col auth-col-full">

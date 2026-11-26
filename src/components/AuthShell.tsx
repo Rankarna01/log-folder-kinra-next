@@ -71,6 +71,7 @@ type FieldProps = {
   placeholder?: string;
   icon: string;
   autoComplete?: string;
+  required?: boolean;
 };
 
 export function AuthField({
@@ -82,6 +83,7 @@ export function AuthField({
   placeholder,
   icon,
   autoComplete,
+  required = true,
 }: FieldProps) {
   const [show, setShow] = useState(false);
   const isPassword = type === 'password';
@@ -94,7 +96,7 @@ export function AuthField({
         <input
           id={id}
           type={isPassword && show ? 'text' : type}
-          required
+          required={required}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}

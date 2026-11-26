@@ -61,9 +61,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: exists ? 'NIK ini sudah terdaftar. Silakan masuk.' : msg }, { status: exists ? 409 : 500 });
   }
 
+  const fallbackEmail = contact || loginEmail;
   const { error: profErr } = await admin.from('profiles').upsert({
     id: created.user.id,
-    email: contact,
+    email: fallbackEmail,
     name,
     role: 'participant',
     division: body.division?.trim() || mentor.division || null,

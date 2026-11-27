@@ -21,6 +21,7 @@ type Draft = {
   phone: string;
   is_active: boolean;
   invite: boolean;
+  password?: string;
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -32,6 +33,7 @@ const EMPTY_DRAFT: Draft = {
   phone: '',
   is_active: true,
   invite: true,
+  password: '',
 };
 
 const norm = (s?: string | null) => (s || '').trim().toLowerCase();
@@ -67,6 +69,7 @@ export default function AdminMentorsPage() {
   const nikInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
   const [people, setPeople] = useState<Profile[]>([]);
   const [mentorAccounts, setMentorAccounts] = useState<{ id: string; name: string; email: string | null; nim_nik: string | null }[]>([]);
   const accountOf = (m: { name: string; email: string | null }) =>
@@ -144,10 +147,12 @@ export default function AdminMentorsPage() {
 
   const openNew = () => {
     setNikError(null);
-    setDraft({ ...EMPTY_DRAFT, division: divisions[0] || '' });
+    setShowPassword(false);
+    setDraft({ ...EMPTY_DRAFT, division: divisions[0] || '', password: '' });
   };
   const openEdit = (m: Mentor) => {
     setNikError(null);
+    setShowPassword(false);
     setDraft({
       id: m.id,
       name: m.name,
@@ -158,6 +163,7 @@ export default function AdminMentorsPage() {
       phone: m.phone || '',
       is_active: m.is_active,
       invite: true,
+      password: '',
     });
   };
 
@@ -194,6 +200,12 @@ export default function AdminMentorsPage() {
       return;
     }
 
+    const pwd = draft.password?.trim();
+    if (pwd && pwd.length < 8) {
+      toast.warning('Kata sandi minimal 8 karakter.');
+      return;
+    }
+
     setSaving(true);
     const payload = {
       name: draft.name.trim(),
@@ -212,6 +224,7 @@ export default function AdminMentorsPage() {
         position: payload.position,
         phone: payload.phone,
         nimNik: nik,
+        password: pwd || undefined,
       };
 
       if (account) {
@@ -459,6 +472,47 @@ export default function AdminMentorsPage() {
               <div className="kc-field">
                 <label htmlFor="m-tel">Telepon</label>
                 <input id="m-tel" type="tel" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
+              </div>
+              <div className="kc-field">
+                <label htmlFor="m-pass" className="flex items-center justify-between">
+                  <span>{draft.id ? 'Ubah kata sandi login' : 'Kata sandi login'}</span>
+                  <span className="text-xs text-muted font-normal">(opsional)</span>
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    id="m-pass"
+                    type={showPassword ? 'text' : 'password'}
+                    value={draft.password ?? ''}
+                    onChange={(e) => setDraft({ ...draft, password: e.target.value })}
+                    placeholder={draft.id ? 'Kosongkan jika tidak ingin mengubah kata sandi' : 'Minimal 8 karakter (default: password123)'}
+                    autoComplete="new-password"
+                    style={{ paddingRight: 42 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--muted)',
+                      padding: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <i className={showPassword ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'} aria-hidden="true"></i>
+                  </button>
+                </div>
+                <p className="kc-help">
+                  {draft.id
+                    ? 'Isi minimal 8 karakter jika ingin mereset kata sandi login mentor ini.'
+                    : 'Bisa dikosongkan untuk menggunakan kata sandi bawaan (password123).'}
+                </p>
               </div>
               <label className="kc-check">
                 <input type="checkbox" checked={draft.is_active} onChange={(e) => setDraft({ ...draft, is_active: e.target.checked })} />

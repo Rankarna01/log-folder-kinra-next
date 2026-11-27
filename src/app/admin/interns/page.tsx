@@ -19,6 +19,7 @@ type Draft = {
   nimNik: string;
   phone: string;
   mentorId: string;
+  password?: string;
 };
 
 const norm = (s?: string | null) => (s || '').trim().toLowerCase();
@@ -53,6 +54,7 @@ export default function AdminInternsPage() {
   const nikInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -112,11 +114,13 @@ export default function AdminInternsPage() {
       nimNik: '',
       phone: '',
       mentorId: activeMentors[0]?.id || '',
+      password: '',
     });
   };
 
   const openEdit = (p: Profile) => {
     setNikError(null);
+    setShowPassword(false);
     setDraft({
       profileId: p.id,
       name: p.name,
@@ -126,6 +130,7 @@ export default function AdminInternsPage() {
       nimNik: p.nim_nik || '',
       phone: p.phone || '',
       mentorId: p.mentor_id || '',
+      password: '',
     });
   };
 
@@ -158,6 +163,13 @@ export default function AdminInternsPage() {
       toast.warning('Pilih mentor pembimbing.');
       return;
     }
+
+    const pwd = draft.password?.trim();
+    if (pwd && pwd.length < 8) {
+      toast.warning('Kata sandi minimal 8 karakter.');
+      return;
+    }
+
     setSaving(true);
     try {
       if (draft.profileId) {
@@ -172,8 +184,13 @@ export default function AdminInternsPage() {
           phone: draft.phone.trim(),
           mentorId: mentor.id,
           mentorName: mentor.name,
+          password: pwd || undefined,
         });
-        toast.success(`Data ${draft.name.trim()} diperbarui.`);
+        toast.success(
+          pwd
+            ? `Data dan kata sandi ${draft.name.trim()} berhasil diperbarui.`
+            : `Data ${draft.name.trim()} diperbarui.`
+        );
       } else {
         await postAccount({
           action: 'create',
@@ -186,9 +203,10 @@ export default function AdminInternsPage() {
           phone: draft.phone.trim(),
           mentorId: mentor.id,
           mentorName: mentor.name,
+          password: pwd || undefined,
         });
         toast.success(
-          `${draft.name.trim()} terdaftar. Login dengan NIK dan kata sandi awal password123.`,
+          `${draft.name.trim()} terdaftar. Login dengan NIK dan kata sandi ${pwd ? 'yang ditentukan' : 'awal password123'}.`,
           'Anak magang ditambahkan'
         );
       }
@@ -389,6 +407,47 @@ export default function AdminInternsPage() {
               <div className="kc-field">
                 <label htmlFor="i-tel">Telepon</label>
                 <input id="i-tel" type="tel" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
+              </div>
+              <div className="kc-field">
+                <label htmlFor="i-pass" className="flex items-center justify-between">
+                  <span>{draft.profileId ? 'Ubah kata sandi login' : 'Kata sandi login'}</span>
+                  <span className="text-xs text-muted font-normal">(opsional)</span>
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    id="i-pass"
+                    type={showPassword ? 'text' : 'password'}
+                    value={draft.password ?? ''}
+                    onChange={(e) => setDraft({ ...draft, password: e.target.value })}
+                    placeholder={draft.profileId ? 'Kosongkan jika tidak ingin mengubah kata sandi' : 'Minimal 8 karakter (default: password123)'}
+                    autoComplete="new-password"
+                    style={{ paddingRight: 42 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--muted)',
+                      padding: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <i className={showPassword ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'} aria-hidden="true"></i>
+                  </button>
+                </div>
+                <p className="kc-help">
+                  {draft.profileId
+                    ? 'Isi minimal 8 karakter jika ingin mereset kata sandi login anak magang ini.'
+                    : 'Bisa dikosongkan untuk menggunakan kata sandi bawaan (password123).'}
+                </p>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 12 }}>

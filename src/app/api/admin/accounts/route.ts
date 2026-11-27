@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { nikLoginEmail } from '@/lib/auth/identifier';
-import { DEFAULT_PASSWORD } from '@/lib/auth/password';
+import { DEFAULT_PASSWORD, MIN_PASSWORD_LENGTH } from '@/lib/auth/password';
 
 // NIK peserta: angka saja, panjang bebas
 const NIK_RE = /^\d+$/;
@@ -32,6 +32,7 @@ type Body = {
   nimNik?: string;
   mentorId?: string | null;
   mentorName?: string | null;
+  password?: string;
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -96,6 +97,16 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     };
 
+    const newPassword = typeof body.password === 'string' ? body.password.trim() : '';
+    if (newPassword && newPassword.length < MIN_PASSWORD_LENGTH) {
+      return NextResponse.json({ error: `Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.` }, { status: 400 });
+    }
+
+    const authPatch: { email?: string; email_confirm?: boolean; password?: string } = {};
+    if (newPassword) {
+      authPatch.password = newPassword;
+    }
+
     if (hasNik) {
       const nik = (body.nimNik ?? '').trim();
       if (body.nimNik !== undefined) {
@@ -109,11 +120,8 @@ export async function POST(req: Request) {
           .maybeSingle();
         if (dup) return NextResponse.json({ error: `NIK ${nik} sudah terdaftar (${dup.name || 'pengguna lain'}).` }, { status: 409 });
         // Email login peserta mengikuti NIK
-        const { error: authErr } = await admin.auth.admin.updateUserById(body.profileId, {
-          email: nikLoginEmail(nik),
-          email_confirm: true,
-        });
-        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        authPatch.email = nikLoginEmail(nik);
+        authPatch.email_confirm = true;
         patch.nim_nik = nik;
       }
       if (body.email !== undefined) {
@@ -121,6 +129,11 @@ export async function POST(req: Request) {
         if (contact && !EMAIL_RE.test(contact)) return NextResponse.json({ error: 'Format email tidak valid.' }, { status: 400 });
         patch.email = contact;
       }
+    }
+
+    if (Object.keys(authPatch).length > 0) {
+      const { error: authErr } = await admin.auth.admin.updateUserById(body.profileId, authPatch);
+      if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
     }
 
     const { error } = await admin.from('profiles').update(patch).eq('id', body.profileId);
@@ -196,9 +209,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `NIK ${nik} sudah terdaftar di sistem login.` }, { status: 409 });
   }
 
+  const initialPassword = typeof body.password === 'string' && body.password.trim() ? body.password.trim() : DEFAULT_PASSWORD;
+  if (initialPassword.length < MIN_PASSWORD_LENGTH) {
+    return NextResponse.json({ error: `Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.` }, { status: 400 });
+  }
+
   const { data, error } = await admin.auth.admin.createUser({
     email: loginEmail,
-    password: DEFAULT_PASSWORD,
+    password: initialPassword,
     email_confirm: true,
     user_metadata: { name, must_change_password: true },
   });
